@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    container_name: laravel_app
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/html
+      - vendor_cache:/var/www/html/vendor
+      - node_modules_cache:/var/www/html/node_modules
+    ports:
+      - "${APP_PORT:-8000}:8000"
+      - "${VITE_PORT:-5173}:5173"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${APP_PORT:-8000}
+      VITE_DEV_SERVER_HOST: 0.0.0.0
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/database/database.sqlite
+
+volumes:
+  vendor_cache:
+  node_modules_cache:
