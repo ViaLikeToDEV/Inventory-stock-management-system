@@ -41,7 +41,7 @@ class OrderUploadController extends Controller
                 }
             }
 
-            $sheetResponse = Http::post('https://script.google.com/macros/s/AKfycbz5fbFTM2223vJYYwM0-oxbgpzeCa3zRn0ZBppaZXhQ4nCVZQ8pXKca8OyKC-UC1v3P/exec', $previewData);
+            $sheetResponse = Http::post('https://script.google.com/macros/s/AKfycbxXp8SF3wPB2_a1QleyV2KhxEBOrUwUBKbQUhfhK2OLEMZeXQlyMSI1mtC0p-mb9D6r/exec', $previewData);
 
             // 3. ส่งข้อมูลกลับไปให้ React แสดงผล
             return response()->json([

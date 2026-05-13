@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\OrderUploadController;
+use App\Http\Controllers\SummaryController;
 
 Route::inertia('/', 'welcome')->name('home');
 
@@ -14,4 +15,4 @@ Route::get('/isms/dashboard', function () {
 });
 
 Route::post('/upload-orders', [OrderUploadController::class, 'upload']);
-
+Route::post('/getSummary', [SummaryController::class, 'getDailySummary']);
