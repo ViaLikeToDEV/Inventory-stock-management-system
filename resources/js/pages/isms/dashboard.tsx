@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Home, ClipboardList, Package } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 export default function Dashboard() {
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,25 +94,40 @@ export default function Dashboard() {
             accept=".csv,.xlsx,.xls"
             className="hidden"
             onChange={async (e) => {
-                const file = e.target.files?.[0];
+            const file = e.target.files?.[0];
+            if (!file) return;
 
-                if (!file) return;
+            const formData = new FormData();
+            formData.append("file", file);
 
-                const formData = new FormData();
-                formData.append("file", file);
+            // Reset input so same file can be re-uploaded
+            e.target.value = '';
+
+            try {
+                // Show loading
+                Swal.fire({ title: 'Uploading...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
                 const response = await fetch("/upload-orders", {
-                    method: "POST",
-                    body: formData,
-                    headers: {
-                    Accept: "application/json",
-                    },
+                method: "POST",
+                body: formData,
+                headers: { Accept: "application/json" },
                 });
 
                 const data = await response.json();
 
-                console.log(data);
-                }}
+                if (!response.ok || data.status === 'error') {
+                throw new Error(data.message || 'Upload failed');
+                }
+
+                Swal.fire({
+                    icon: "success",
+                    title: `อัพโหลดไฟล์สำเร็จ`,
+                    text: `\n เพิ่มแล้ว: ${data.sheet_result.added} \n ข้อมูลซ้ำ: ${data.sheet_result.duplicates_skipped}`
+                    });
+            } catch (err: any) {
+                Swal.fire('Error', err.message, 'error');
+            }
+            }}
             />
           </div>
 
