@@ -16,3 +16,6 @@ Route::get('/isms/dashboard', function () {
 
 Route::post('/upload-orders', [OrderUploadController::class, 'upload']);
 Route::post('/getSummary', [SummaryController::class, 'getDailySummary']);
+Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
+
+
