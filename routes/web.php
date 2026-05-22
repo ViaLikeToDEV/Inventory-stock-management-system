@@ -31,3 +31,6 @@ Route::get('/pg', [PlaygroundController::class, 'SendThemAndSendBack']);
 Route::get('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
 
 Route::inertia('/focus', 'InputTracker');
+Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
+
+

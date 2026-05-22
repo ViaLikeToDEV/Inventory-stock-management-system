@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Home, ClipboardList, Package, Loader2 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import Packing from './packing';
 
 export function DashStat() {
   // สร้าง State มารับข้อมูลที่ดึงมา
@@ -156,7 +157,8 @@ export function DashStat() {
 
 export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+    //สร้างตัวแปลรับค่าเมนูที่ถูกกด (ค่าเริ่มต้นให้เปิดหน้า 'home' ขึ้นมาก่อน)
+  const [activeMenu, setActiveMenu] = useState('home');
   const handleSelectFile = () => {
     fileInputRef.current?.click();
   };
@@ -172,11 +174,16 @@ export default function Dashboard() {
         <nav className="flex-1 pt-6">
           <ul className="space-y-2 px-2">
             <li>
-              {/* เมนูที่ถูกเลือก (Active) */}
-              <a href="#" className="flex items-center px-6 py-3 bg-[#2b3e52] text-white rounded-lg mx-2 border-l-4 border-blue-400">
+              {/* 🟢 3. ปุ่ม HOME: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'home' */}
+              <button
+                onClick={() => setActiveMenu('home')}
+                className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+                  activeMenu === 'home' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                }`}
+              >
                 <Home className="w-5 h-5 mr-4" />
                 HOME
-              </a>
+              </button>
             </li>
             <li>
               <a href="#" className="flex items-center px-6 py-3 hover:bg-[#2b3e52] text-gray-300 rounded-lg mx-2 transition-colors">
@@ -185,10 +192,16 @@ export default function Dashboard() {
               </a>
             </li>
             <li>
-              <a href="#" className="flex items-center px-6 py-3 hover:bg-[#2b3e52] text-gray-300 rounded-lg mx-2 transition-colors">
+              {/* 🟢 4. ปุ่ม Packing: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'packing' */}
+              <button
+                onClick={() => setActiveMenu('packing')}
+                className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+                  activeMenu === 'packing' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                }`}
+              >
                 <Package className="w-5 h-5 mr-4" />
                 Packing
-              </a>
+              </button>
             </li>
           </ul>
         </nav>
@@ -199,82 +212,99 @@ export default function Dashboard() {
         {/* แถบสีน้ำเงินด้านบนสุด */}
         <div className="h-8 bg-[#334d8f] w-full shadow-sm"></div>
 
-        {/* พื้นที่ Content */}
+        {/* พื้นที่ Content ที่จะสลับหน้าจอ */}
         <div className="flex-1 overflow-y-auto">
-          {/* ส่วนหัวและตัวเลขสถิติ */}
-          <div className="p-8 pb-10 bg-[#eef1f8]">
-            <h2 className="text-3xl font-bold text-gray-800 mb-8">Dashboard</h2>
-            <DashStat />
-          </div>
 
-          {/* ส่วนอัปโหลด CSV */}
-          <div className="bg-white h-full flex flex-col items-center pt-20 rounded-t-3xl shadow-[-10px_-10px_30px_-15px_rgba(0,0,0,0.1)]">
-            <h3 className="text-4xl font-bold text-gray-800 mb-10">Add CSV File</h3>
+          {/* 🟢 1. ถ้า activeMenu เป็น 'home' ให้โชว์หน้า Dashboard และ อัปโหลด CSV */}
+          {activeMenu === 'home' && (
+            <div className="flex flex-col h-full">
+              {/* ส่วนหัวและตัวเลขสถิติ */}
+              <div className="p-8 pb-10 bg-[#eef1f8]">
+                <h2 className="text-3xl font-bold text-gray-800 mb-8">Dashboard</h2>
+                <DashStat />
+              </div>
 
-            <button
-              onClick={handleSelectFile}
-              className="bg-[#334d8f] hover:bg-[#25396b] text-white font-bold py-4 px-10 rounded-full text-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-200"
-            >
-              Select CSV file
-            </button>
+              {/* ส่วนอัปโหลด CSV (โค้ดเดิมของคุณเป๊ะๆ) */}
+              <div className="bg-white flex-1 flex flex-col items-center pt-20 rounded-t-3xl shadow-[-10px_-10px_30px_-15px_rgba(0,0,0,0.1)]">
+                <h3 className="text-4xl font-bold text-gray-800 mb-10">Add CSV File</h3>
 
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
+                <button
+                  onClick={handleSelectFile}
+                  className="bg-[#334d8f] hover:bg-[#25396b] text-white font-bold py-4 px-10 rounded-full text-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-200"
+                >
+                  Select CSV file
+                </button>
 
-                const formData = new FormData();
-                formData.append("file", file);
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
 
-                e.target.value = '';
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    e.target.value = '';
 
-                try {
-                    Swal.fire({
-                        title: 'Uploading...',
-                        allowOutsideClick: false,
-                        didOpen: () => Swal.showLoading()
-                    });
-
-                    const response = await fetch("/upload-orders", {
-                        method: "POST",
-                        body: formData,
-                        headers: { Accept: "application/json" },
-                    });
-
-                    const data = await response.json();
-                    const sheetType = data.sheetType;
-
-
-                    if (!response.ok || data.status === 'error') {
-                        throw new Error(data.message || 'Upload failed');
-                    }
-
-                    console.log(data);
+                    try {
                         Swal.fire({
-                            icon: "success",
-                            title: `${sheetType || 'unknow'}`,
-                            text: `\n เพิ่มแล้ว: ${data.sheet_result?.added || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.duplicates_skipped || 0}`
+                            title: 'Uploading...',
+                            allowOutsideClick: false,
+                            didOpen: () => Swal.showLoading()
                         });
 
-                } catch(err: any) {
-                    if (err.response && err.response.status === 400) {
+                        const response = await fetch("/upload-orders", {
+                            method: "POST",
+                            body: formData,
+                            headers: { Accept: "application/json" },
+                        });
+
+                        const data = await response.json();
+                        const sheetType = data.sheetType;
+
+
+                        if (!response.ok || data.status === 'error') {
+                            throw new Error(data.message || 'Upload failed');
+                        }
+
+                        console.log(data);
                             Swal.fire({
-                                icon: 'error',
-                                title: 'Upload Validator',
-                                text: err.response.data.message, // ดึงข้อความจากที่ Laravel ส่งมา
-                                confirmButtonColor: '#d33'
+                                icon: "success",
+                                title: `${sheetType || 'unknow'}`,
+                                text: `\n เพิ่มแล้ว: ${data.sheet_result?.added || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.duplicates_skipped || 0}`
                             });
-                    } else {
-                        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+
+                    } catch(err: any) {
+                        if (err.response && err.response.status === 400) {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Upload Validator',
+                                    text: err.response.data.message, // ดึงข้อความจากที่ Laravel ส่งมา
+                                    confirmButtonColor: '#d33'
+                                });
+                        } else {
+                            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+                        }
                     }
-                }
-              }}
-            />
-          </div>
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 🟢 2. ถ้า activeMenu เป็น 'packing' ให้ดึง Component Packing มาโชว์ */}
+          {activeMenu === 'packing' && (
+            <div className="p-8 bg-[#eef1f8] min-h-full">
+              <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2>
+
+              {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
+              <Packing />
+
+            </div>
+          )}
+
         </div>
       </main>
     </div>

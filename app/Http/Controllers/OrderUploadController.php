@@ -173,4 +173,17 @@ class OrderUploadController extends Controller
         }
         return '';
     }
+
+    public function getOrders()
+    {
+        // 🚨 อย่าลืมเอา URL ของ Google App Script (ตัวใหม่) มาใส่ในเครื่องหมายคำพูดนะครับ
+        $appScriptUrl = 'https://script.google.com/macros/s/AKfycbyi-Pz8el_aChRSp8bqxubT-8tXsEiTsk4P_ZF88r26mSPAnIO2vtvRTcOLGXgUzcxO/exec';
+
+        try {
+            $response = Http::get($appScriptUrl);
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+    }
 }
