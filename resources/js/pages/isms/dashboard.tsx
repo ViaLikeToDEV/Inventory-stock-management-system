@@ -186,10 +186,15 @@ export default function Dashboard() {
               </button>
             </li>
             <li>
-              <a href="#" className="flex items-center px-6 py-3 hover:bg-[#2b3e52] text-gray-300 rounded-lg mx-2 transition-colors">
+                <button
+                onClick={() => setActiveMenu('order')}
+                className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+                  activeMenu === 'order' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                }`}
+              >
                 <ClipboardList className="w-5 h-5 mr-4" />
                 Order
-              </a>
+              </button>
             </li>
             <li>
               {/* 🟢 4. ปุ่ม Packing: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'packing' */}
@@ -297,7 +302,7 @@ export default function Dashboard() {
           {/* 🟢 2. ถ้า activeMenu เป็น 'packing' ให้ดึง Component Packing มาโชว์ */}
           {activeMenu === 'packing' && (
             <div className="p-8 bg-[#eef1f8] min-h-full">
-              <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2>
+              {/* <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2> */}
 
               {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
               <Packing />
