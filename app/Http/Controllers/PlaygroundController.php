@@ -113,4 +113,65 @@ class PlaygroundController extends Controller
 
         return response()->json(['message' => 'Invalid status from GAS'], 400);
         }
+
+        public function setpacked(Request $req)
+        {
+            // 1. Validate ข้อมูลที่ส่งมาจาก React (ยอมให้ส่ง tracking_number มาด้วย)
+            $req->validate([
+                'order_sn' => 'required|string',
+                'tracking_number' => 'nullable|string',
+            ]);
+
+            $GAS_URL = config('services.shopee_script_url');
+
+            if (!$GAS_URL) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'ไม่พบโครงสร้างบริการ GAS ในระบบ Config'
+                ], 500);
+            }
+
+            // 2. จัดโครงสร้าง Payload ให้ตรงตามที่ GAS คาดหวัง
+            // GAS แกะ payload และดึง data.order_sn หรือ data.tracking_number
+            $payload = [
+                'action' => 'setpacked',
+                'order_sn' => $req->order_sn,
+            ];
+
+            try {
+                // 3. ยิง HTTP POST ไปที่ Google Apps Script
+                $response = Http::timeout(15)->post($GAS_URL, $payload);
+
+                if ($response->failed()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Google Apps Script ไม่ตอบกลับหรือเกิดข้อผิดพลาดทางเครือข่าย'
+                    ], 502);
+                }
+
+                // แกะ JSON ที่ GAS ส่งกลับมา (ที่ระบุ status: success / error)
+                $gasResult = $response->json();
+
+                // 4. ส่งผลลัพธ์กลับไปให้ฝั่ง React จัดการต่อ
+                if (isset($gasResult['status']) && $gasResult['status'] === 'success') {
+                    return response()->json([
+                        'status' => 'success',
+                        'message' => $gasResult['message'] ?? 'อัปเดตสถานะแพ็คสินค้าเรียบร้อย'
+                    ], 200);
+                }
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $gasResult['message'] ?? 'GAS ปฏิเสธการอัปเดตข้อมูล'
+                ], 400);
+
+            } catch (\Exception $e) {
+                Log::error('GAS Packing Update Error: ' . $e->getMessage());
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'เกิดข้อผิดพลาดในระบบเซิร์ฟเวอร์: ' . $e->getMessage()
+                ], 500);
+            }
+        }
 }

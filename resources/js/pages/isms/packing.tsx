@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon} from 'lucide-react';
+import axios from 'axios';
 
 // ─────────────────────────────────────────────
 // Types
@@ -214,7 +215,6 @@ function ShopeePanel() {
 
         const current = scanCounts[target.barcode] ?? 0;
         if (current >= target.quantity) {
-            // Already done — flash row
             setFlashKey(k => k + 1);
             return;
         }
@@ -223,18 +223,62 @@ function ShopeePanel() {
         const nextCounts = { ...scanCounts, [target.barcode]: next };
         setScanCounts(nextCounts);
 
-        // Check all done
+        // ตรวจสอบว่าแพ็คครบทุกชิ้นหรือยัง
         const allDone = orderData.products.every(p =>
             !p.barcode || (nextCounts[p.barcode] ?? 0) >= p.quantity
         );
 
         if (allDone) {
-            setTimeout(() => {
-                // TODO: Replace with SweetAlert2
-                if (confirm('✅ แพ็คครบทุกชิ้นแล้ว!\n\nกดตกลงเพื่อกลับหน้าค้นหา')) {
-                    resetToSearch();
+            // ดึง SweetAlert2 มาใช้งานแบบ Dynamic หรือ Import ไว้ด้านบนก็ได้
+            import('sweetalert2').then(async (Swal) => {
+                // 1. แสดง Loading รอระหว่างยิง API
+                Swal.default.fire({
+                    title: 'กำลังบันทึกข้อมูล...',
+                    text: `กำลังอัปเดตสถานะออเดอร์ ${orderData.order_sn}`,
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    showConfirmButton: false,
+                    didOpen: () => {
+                        Swal.default.showLoading();
+                    }
+                });
+
+                try {
+                    // 2. ยิง HTTP POST ไปที่ Controller (ส่งไปทั้งคู่กันเหนียว)
+                    const response = await axios.post('/set-packed', {
+                        order_sn: orderData.order_sn,
+                        tracking_number: orderData.tracking_number
+                    });
+
+                    // เช็ก Response จาก Laravel/GAS
+                    if (response.data?.status === 'success' || response.status === 200) {
+                        // 3. แจ้งเตือนสำเร็จ
+                        await Swal.default.fire({
+                            icon: 'success',
+                            title: 'แพ็คครบเรียบร้อย!',
+                            text: 'ระบบได้บันทึกสถานะลง Google Sheet แล้ว',
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
+
+                        // 4. รีเซ็ตหน้าจอกลับไปค้นหา
+                        resetToSearch();
+                    } else {
+                        throw new Error(response.data?.message || 'GAS ตอบกลับมาแบบมี Error');
+                    }
+
+                } catch (error: any) {
+                    console.error(error);
+                    // 5. แจ้งเตือนเมื่อเกิดข้อผิดพลาด
+                    Swal.default.fire({
+                        icon: 'error',
+                        title: 'เกิดข้อผิดพลาด!',
+                        text: error.response?.data?.message || error.message || 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้',
+                        confirmButtonText: 'รับทราบ',
+                        confirmButtonColor: '#ee4d2d'
+                    });
                 }
-            }, 200);
+            });
         }
     }, [orderData, scanCounts, resetToSearch]);
 
