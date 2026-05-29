@@ -115,7 +115,7 @@ class OrderUploadController extends Controller
                             $previewData[] = [
                                 'tracking_number' => (string) $row[0], // Column A (Index 0)
                                 'order_sn'        => (string) $row[1], // Column B (Index 1)
-                                'product_info'    => json_encode($parsedItems, JSON_UNESCAPED_UNICODE),
+                                'product_info'    => json_encode($parsedItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                             ];
                         }
                     }

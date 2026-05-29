@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $table) {
             $table->integer('product_id')->primary();
             $table->string('product_name');
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
 
@@ -22,6 +23,7 @@ return new class extends Migration
             $table->integer('product_id');
             $table->string('variant_name');
             $table->string('barcode')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->foreign('product_id')->references('product_id')->on('products');
             $table->timestamps();
         });

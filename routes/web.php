@@ -27,8 +27,9 @@ Route::post('/getSummary', [SummaryController::class, 'getDailySummary']);
 Route::get('/products/check', [SkuFetchTestController::class, 'index']);
 Route::post('/api/products/check', [SkuFetchTestController::class, 'check']);
 
-Route::get('/pg', [PlaygroundController::class, 'SendThemAndSendBack']);
+Route::get('/pg', [PlaygroundController::class, 'page']);
 Route::get('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
+Route::post('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
 
 Route::inertia('/focus', 'InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);

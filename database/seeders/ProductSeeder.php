@@ -16,7 +16,7 @@ class ProductSeeder extends Seeder
             'action' => 'productsinfolists'
         ];
 
-        $GAS = 'https://script.google.com/macros/s/AKfycbzGBzLR_xekkOw7U2xZ9FE0fGj0SW8XDRy6zfCpbp5fXUx_9J9l-Lf6z5gogtcFnAZrCw/exec';
+        $GAS = config('services.products_script_url');
 
         $response = Http::timeout(15)->post($GAS, $searchParameter);
         $data = $response->object();
@@ -24,7 +24,10 @@ class ProductSeeder extends Seeder
         foreach ($data->sheets->Products->rows as $row) {
             Product::updateOrCreate(
                 ['product_id' => $row[0]],
-                ['product_name' => $row[1]]
+                [
+                    'product_name' => $row[1],
+                    'is_active' => $row[2] ?? true,
+                ]
             );
         }
 
@@ -35,6 +38,7 @@ class ProductSeeder extends Seeder
                     'product_id'   => $row[1],
                     'variant_name' => $row[2],
                     'barcode'      => $row[3] ?? null,
+                    'is_active' => $row[4] ?? true,
                 ]
             );
         }

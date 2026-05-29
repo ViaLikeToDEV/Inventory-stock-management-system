@@ -302,7 +302,7 @@ export default function Dashboard() {
           {/* 🟢 2. ถ้า activeMenu เป็น 'packing' ให้ดึง Component Packing มาโชว์ */}
           {activeMenu === 'packing' && (
             <div className="p-8 bg-[#eef1f8] min-h-full">
-              {/* <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2> */}
+              <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2>
 
               {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
               <Packing />
