@@ -155,7 +155,7 @@ export default function Dashboard() {
                 <DashStat />
               </div>
 
-              {/* ส่วนอัปโหลด CSV (โค้ดเดิมของคุณเป๊ะๆ) */}
+              {/* ส่วนอัปโหลด CSV */}
               <div className="bg-white flex-1 flex flex-col items-center pt-20 rounded-t-3xl shadow-[-10px_-10px_30px_-15px_rgba(0,0,0,0.1)]">
                 <h3 className="text-4xl font-bold text-gray-800 mb-10">Add CSV File</h3>
 

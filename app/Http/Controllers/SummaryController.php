@@ -14,3 +14,4 @@ class SummaryController extends Controller
         return response()->json($sheetResponse->json());
     }
 }
+
