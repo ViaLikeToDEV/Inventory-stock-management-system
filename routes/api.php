@@ -1,5 +1,9 @@
 <?php
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\OrderUploadController;
+use App\Http\Controllers\ItemsBarcodeController;
 
-Route::post('/upload-orders', [OrderUploadController::class, 'upload']);
+
+Route::prefix('barcode')->group(function () {
+    Route::get('/generate',           [ItemsBarcodeController::class, 'generate']);
+    Route::get('/generate/{count}',   [ItemsBarcodeController::class, 'generateBatch']);
+});

@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'tiktokshop_script_url' => env('TIKTOKSHOP_SCRIPT_URL'),
+    'shopee_script_url'     => env('SHOPEE_SCRIPT_URL'),
 
     /*
     |--------------------------------------------------------------------------
