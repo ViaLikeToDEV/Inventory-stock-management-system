@@ -76,7 +76,7 @@ export function DashStat() {
               <span className="text-5xl font-extrabold text-[#0ea5e9] tracking-tight">{stats.total}</span>
             </div>
             {/* ส่วนสถิติแยกฝั่งด้านล่าง */}
-            <div className="border-t border-gray-100 pt-3 flex justify-between text-sm font-medium">
+            <div className="border-t border-gray-100 pt-2.5 flex flex-col gap-1 text-sm font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                 <span className="text-gray-500">Shopee:</span>
@@ -105,7 +105,7 @@ export function DashStat() {
               <span className="text-5xl font-extrabold text-[#22c55e] tracking-tight">{stats.packed}</span>
             </div>
             {/* ส่วนสถิติแยกฝั่งด้านล่าง */}
-            <div className="border-t border-gray-100 pt-3 flex justify-between text-sm font-medium">
+            <div className="border-t border-gray-100 pt-2.5 flex flex-col gap-1 text-sm font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                 <span className="text-gray-500">Shopee:</span>
@@ -136,7 +136,7 @@ export function DashStat() {
               </span>
             </div>
             {/* ส่วนสถิติแยกฝั่งด้านล่าง */}
-            <div className="border-t border-gray-100 pt-3 flex justify-between text-sm font-medium">
+            <div className="border-t border-gray-100 pt-2.5 flex flex-col gap-1 text-sm font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                 <span className="text-gray-500">Shopee:</span>
