@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon} from 'lucide-react';
 import axios from 'axios';
-
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -174,12 +173,11 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
         });
 
         try {
-            const res = await fetch('/api/sync-products', { method: 'POST' });
+            // ใช้ axios.post ควบคู่กับ route() ของ Ziggy
+            const res = await axios.post(route('sync-products'));
 
-            // เช็กด้วยว่ายิง API สำเร็จไหม (ถ้า HTTP status ไม่ใช่ 2xx ให้ตกไป catch)
-            if (!res.ok) throw new Error('ยิง API ไม่สำเร็จ');
-
-            const data = await res.json();
+            // axios แกะ json มาให้เสร็จสรรพอยู่ใน res.data (ถ้าอยากเอาไปใช้ต่อ)
+            const data = res.data;
 
             // 3. ซิงค์สำเร็จ -> เปลี่ยน Pop-up เป็นสีเขียวชวนสบายใจ
             await Swal.fire({
@@ -193,10 +191,14 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
             setTimeout(() => inputRef.current?.focus(), 100);
 
         } catch (err: any) {
+            // Axios error handling: ถ้ามีสเตตัสพังๆ กลับมาจาก Server จะดึง error message มาแสดง
+            // แต่ถ้าไม่มี (เช่น เน็ตหลุด) ก็จะใช้ Fallback message แทน
+            const errorMessage = err.response?.data?.message || err.message || 'ไม่สามารถซิงค์ข้อมูลได้';
+
             // 4. ซิงค์พัง -> เปลี่ยน Pop-up เป็นสีแดงแจ้งเตือน
             await Swal.fire({
                 title: 'เกิดข้อผิดพลาด',
-                text: err.message || 'ไม่สามารถซิงค์ข้อมูลได้',
+                text: errorMessage,
                 icon: 'error',
                 confirmButtonText: 'รับทราบ'
             });
@@ -264,20 +266,14 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
         setIsLoading(true);
         setErrorMsg('');
         try {
-            const res = await fetch('/shopeeq', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
-                },
-                body: JSON.stringify({ q }),
-            });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
-            }
-            const data: ShopeeOrder = await res.json();
+
+            // Ziggy `route()` จะแปลงชื่อ 'shopee-query' เป็น URL ให้เอง
+            // Axios จะ Handle CSRF Token ให้อัตโนมัติถ้าตั้งค่า Global ไว้ (ถ้าไม่ได้ตั้ง สามารถใส่เพิ่มใน headers ได้)
+            const response = await axios.post<ShopeeOrder>(route('shopee-query'), { q });
+
+            const data = response.data;
             const invalid = data.products.filter(p => p.barcode === null || p.barcode === undefined);
+
             if (invalid.length !== 0) {
                 setInvalidProducts(invalid);
                 setShopeeMode('skunotfound');
@@ -286,7 +282,9 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
                 setQuery('');
             }
         } catch (err: any) {
-            setErrorMsg(err.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง');
+            // Axios Error จะอยู่ที่ err.response?.data
+            const errorMsg = err.response?.data?.message || err.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง';
+            setErrorMsg(errorMsg);
         } finally {
             setIsLoading(false);
         }
@@ -334,8 +332,8 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
                 });
 
                 try {
-                    // 2. ยิง HTTP POST ไปที่ Controller (ส่งไปทั้งคู่กันเหนียว)
-                    const response = await axios.post('/set-packed', {
+                    // 2. ยิง HTTP POST ไปที่ Controller (ใช้ Ziggy route() เรียกตามชื่อ .name() ใน Laravel)
+                    const response = await axios.post(route('shopee-setpacked'), {
                         order_sn: orderData.order_sn,
                         tracking_number: orderData.tracking_number
                     });
@@ -729,10 +727,12 @@ function ShopeeVerifyPage({
                     didOpen: () => Swal.default.showLoading()
                 });
                 try {
-                    const response = await axios.post('/set-packed', {
+                    // ยิง HTTP POST ไปที่ Controller (ใช้ Ziggy route() ดึงจากชื่อที่ตั้งใน Laravel)
+                    const response = await axios.post(route('shopee-setpacked'), {
                         order_sn: orderData.order_sn,
                         tracking_number: orderData.tracking_number
                     });
+
                     if (response.data?.status === 'success' || response.status === 200) {
                         await Swal.default.fire({
                             icon: 'success',
@@ -741,7 +741,9 @@ function ShopeeVerifyPage({
                             timer: 2000,
                             showConfirmButton: false
                         });
-                        onBack(); // ← กลับไป Parent
+
+                        // ส่งกลับไปหน้า Parent ตามที่ขอมาใหม่
+                        onBack();
                     } else {
                         throw new Error(response.data?.message || 'GAS ตอบกลับมาแบบมี Error');
                     }

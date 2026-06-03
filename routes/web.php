@@ -7,7 +7,6 @@ use App\Http\Controllers\SummaryController;
 use App\Http\Controllers\SkuFetchTestController;
 use App\Http\Controllers\PlaygroundController;
 
-
 Route::inertia('/', 'welcome')->name('home');
 
 // สร้าง Route สำหรับระบบ ISMS
@@ -28,9 +27,7 @@ Route::get('/products/check', [SkuFetchTestController::class, 'index']);
 Route::post('/api/products/check', [SkuFetchTestController::class, 'check']);
 
 Route::get('/pg', [PlaygroundController::class, 'page']);
-Route::get('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
-Route::post('/set-packed', [PlaygroundController::class, 'setpacked']);
-Route::post('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
+// Route::get('/shopeeq', [ShopeeController::class, 'queryShopeeData']);
 
 Route::inertia('/focus', 'InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
