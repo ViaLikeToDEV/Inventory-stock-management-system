@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Models\Product;
 use App\Models\Variant;
+use Illuminate\Support\Facades\Log;
 
 class PlaygroundController extends Controller
 {
@@ -28,7 +29,178 @@ class PlaygroundController extends Controller
         return $res;
     }
 
+    public function pgfunc(){
+        $GAS = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
 
+        $mockRows = [
+            [
+                'tracking_number' => 'TH267097911330J',
+                'order_sn' => '260505HYJKR5VT',
+                'product_info_sku' => json_encode([
+                    ['sku' => 'โจ๊กคละ 4 รส', 'quantity' => 5, 'price' => 104]
+                ], JSON_UNESCAPED_UNICODE),
+                'timestamp' => now()->toIso8601String(),
+            ],
+            [
+                'tracking_number' => 'TH267098999999A',
+                'order_sn' => '260505XWERT789',
+                'product_info_sku' => json_encode([
+                    ['sku' => 'มาม่าต้มยำกุ้ง', 'quantity' => 2, 'price' => 15]
+                ], JSON_UNESCAPED_UNICODE),
+                'timestamp' => now()->toIso8601String(),
+            ],
+            [
+                'tracking_number' => 'TH267091111111B',
+                'order_sn' => '260506ABCDE123',
+                'product_info_sku' => json_encode([
+                    ['sku' => 'ปลากระป๋องสามแม่ครัว', 'quantity' => 10, 'price' => 200]
+                ], JSON_UNESCAPED_UNICODE),
+                'timestamp' => now()->toIso8601String(),
+            ]
+        ];
+
+        // 2. ประกอบ Payload ให้ตรงกับที่ handleInsert ใน Apps Script รอรับ
+        $payload = [
+            'action' => 'insert',
+            'rows'   => $mockRows,
+        ];
+
+        // 3. ยิงไปที่ Google Apps Script Web App URL
+        // แนะนำให้เอา URL ไปใส่ในไฟล์ .env (เช่น GAS_WEBAPP_URL)
+
+        if (!$GAS) {
+            return response()->json([
+                'success' => false,
+                'error' => 'กรุณาตั้งค่า GAS_WEBAPP_URL ใน .env ก่อน'
+            ], 500);
+        }
+
+        try {
+            // ใช้ asJson() และต้องตบด้วย ->asForm() หรือใช้ Http::withHeaders() สไตล์นี้
+            // เพราะบางที GAS ตรวจจับ POST Request แบบ JSON ตรงๆ ไม่ได้ถ้าไม่เปิดรับ raw body
+            // แต่เนื่องจากโค้ด GAS ของคุณใช้ JSON.parse(e.postData.contents) ดังนั้นส่งแบบ JSON ตรงๆ ได้เลย
+            $response = Http::withHeaders([
+                'Accept' => 'application/json',
+            ])->post($GAS, $payload);
+
+            if ($response->failed()) {
+                throw new \Exception("GAS API returned status: " . $response->status());
+            }
+
+            // แกะ JSON ที่ได้กลับมาจาก Google Apps Script
+            $result = $response->json();
+
+            return response()->json([
+                'laravel_status' => 'Request Sent',
+                'gas_response' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('ShopeeDB Insert Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'error' => 'พังจ้า ติดต่อ Google Apps Script ไม่ได้: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function queryTrackings()
+    {
+        // ─── CONFIGURATION (แก้ไขตรงนี้ได้เลย) ───────────────────────
+
+        // URL ของ Google Apps Script Web App ที่ได้จากการ Deploy (เปลี่ยนเป็นของคุณ)
+        $webAppUrl = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
+
+        // พารามิเตอร์ที่ต้องการ Hardcode ส่งไปยัง handleQuery
+        $payload = [
+            'action'    => 'query',
+            'yearMonth' => '2026-06' // รูปแบบ YYYY-MM ตามที่ GAS Validate ไว้
+        ];
+
+        // ─── EXECUTION ──────────────────────────────────────────────
+        try {
+            // Google Apps Script มีการทำ Redirect (302) เป็นปกติ
+            // Http facade ของ Laravel จะตามดักให้อัตโนมัติ (withRedirects() เป็น default)
+            $response = Http::timeout(15) // ตั้ง timeout เผื่อกรณีแผ่นงานคิวรี่นาน
+                            ->post($webAppUrl, $payload);
+
+            if ($response->failed()) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => 'Failed to connect to Google Apps Script',
+                    'status'  => $response->status()
+                ], $response->status());
+            }
+
+            // รับผลลัพธ์ JSON กลับมาจาก GAS
+            $result = $response->json();
+
+            // ตรวจสอบ success flag ภายใน JSON ที่ส่งมาจาก GAS
+            if (isset($result['success']) && !$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => $result['error'] ?? 'Unknown error from GAS'
+                ], 400);
+            }
+
+            // ส่งข้อมูลกลับไปให้ Frontend หรือ API client ตัวอื่น
+            return response()->json([
+                'success' => true,
+                'source'  => 'GoogleAppsScript_ShopeeDB',
+                'meta'    => [
+                    'yearMonth' => $result['yearMonth'] ?? $payload['yearMonth'],
+                    'count'     => $result['count'] ?? 0
+                ],
+                'data'    => $result['data'] ?? []
+            ]);
+
+        } catch (\Exception $e) {
+            // ดักจับ Error เผื่อ Network พัง หรือ URL ผิดพลาด
+            Log::error('ShopeeSheetController Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'error'   => 'Internal Server Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    private function error(string $message, int $status = 400): JsonResponse
+    {
+        return response()->json(['success' => false, 'error' => $message], $status);
+    }
+
+
+    public function querySingle()
+    {
+        // ===== Hardcoded Config =====
+        $googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
+
+        $trackingNumber = 'TH23802592460382B';
+        // ============================
+
+        $payload = [
+            'action' => 'query_single',
+            'tracking_number' => $trackingNumber,
+        ];
+
+        $response = Http::timeout(30)
+            ->acceptJson()
+            ->post($googleAppsScriptUrl, $payload);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Failed to connect to Google Apps Script',
+                'status'  => $response->status(),
+            ], 500);
+        }
+
+        return response()->json($response->json());
+    }
 
 
 }
