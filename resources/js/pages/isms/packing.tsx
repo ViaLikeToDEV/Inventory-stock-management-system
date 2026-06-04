@@ -811,7 +811,7 @@ function ShopeeVerifyPage({
                 </div>
 
                 {/* ฝั่งขวา: Order Details, Scan Input, and Product List */}
-                <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
+                <div className="flex-1 w-full min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
 
                     {/* Order Header Info */}
                     <div className="flex justify-between items-start w-full">
