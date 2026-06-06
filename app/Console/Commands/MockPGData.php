@@ -9,12 +9,12 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class MockShopeeData extends Command
+class MockPGData extends Command
 {
     /**
      * ชื่อคำสั่งในการเรียกใช้งานผ่าน Artisan
      */
-    protected $signature = 'shopee:mock
+    protected $signature = 'shopee:mock1
                             {total=1000 : จำนวนข้อมูลทั้งหมดที่ต้องการสร้าง}
                             {chunk=100 : จำนวนรายการต่อการยิง 1 Batch}';
 
@@ -22,8 +22,7 @@ class MockShopeeData extends Command
 
     public function handle()
     {
-        $gasUrl = config('services.shopee_script_url');
-
+        $gasUrl = 'https://script.google.com/macros/s/AKfycbzmtPYi0Ps81ddEeg9bEzl9clO6ZFs5dmV5RNh2KWkCkQYO6c3G8bbzKUcwB9iGyHyk5A/exec';
 
         $total = (int) $this->argument('total');
         $chunkSize = (int) $this->argument('chunk');
@@ -43,10 +42,10 @@ class MockShopeeData extends Command
             $rows = [];
             for ($i = 0; $i < $currentChunkSize; $i++) {
                 // จำลองข้อมูลที่มีฟอร์แมตใกล้เคียงความจริง
-                $trackingNum = 'TH' . rand(20000000, 29999999) . rand(100000, 999999) . chr(rand(65, 90));
-                $orderSn = rand(260000, 269999) . Str::upper(Str::random(8));
+                $trackingNum = 'TH' . rand(20000000, 29999999) . rand(100000, 999999) . chr(rand(65, 90)); // เช่น TH267097911330J
+                $orderSn = rand(260000, 269999) . Str::upper(Str::random(8)); // เช่น 260505HYJKR5VT
 
-                // สุ่มสร้างสินค้าในตระกูล SKU JSON ให้เหมือน Schema
+                // สุ่มสร้างสินค้าในตระกูล SKU JSON
                 $skuMock = [
                     [
                         'sku' => collect(['มาม่าต้มยำกุ้ง', 'โจ๊กคละ 4 รส', 'ปลากระป๋องสามแม่ครัว', 'น้ำดื่มสิงห์'])->random(),
@@ -55,25 +54,28 @@ class MockShopeeData extends Command
                     ]
                 ];
 
-                // แพ็กข้อมูลให้ตรงกับที่ GAS ต้องการ (GAS มองหา order.product_info ไม่ใช่ product_info_sku)
-                // ส่วน TimeStamp ทางฝั่ง GAS ทำการ Stamp ให้เองด้วย var today = new Date(); อยู่แล้ว
+                // สุ่มถอยเวลากลับไปในช่วง 3 เดือนที่ผ่านมา เพื่อกระจายคีย์ YearMonth ในตาราง
+                $randomDaysAgo = rand(0, 90);
+                $timestamp = now()->subDays($randomDaysAgo)->toIso8601String();
+
                 $rows[] = [
                     'tracking_number'  => $trackingNum,
                     'order_sn'         => $orderSn,
-                    'product_info'     => json_encode($skuMock, JSON_UNESCAPED_UNICODE),
+                    'product_info_sku' => json_encode($skuMock, JSON_UNESCAPED_UNICODE),
+                    'timestamp'        => $timestamp,
                 ];
             }
 
-            // ⚠️ แก้ Payload ยิงถล่ม GAS ให้ตรงกับที่มันรอรับ
+            // เตรียม Payload ยิงถล่ม GAS
             $payload = [
-                'action' => 'import', // เปลี่ยนจาก 'insert' เป็น 'import'
-                'data'   => $rows     // เปลี่ยนจาก 'rows' เป็น 'data'
+                'action' => 'insert',
+                'rows'   => $rows
             ];
 
             // ส่งข้อมูลไปยังฝั่ง Google Apps Script
             try {
-                // ตั้งค่า Timeout ไว้ 30s
-                $response = Http::timeout(30)->post($gasUrl, $payload);
+                // ตั้งค่า Timeout ไว้สูงนิดนึง (30s) เผื่อแผ่นงานคำนวณช้าเมื่อข้อมูลเยอะขึ้น
+                $response = Http::timeout(200)->post($gasUrl, $payload);
 
                 if ($response->failed()) {
                     $this->newLine();
@@ -82,11 +84,9 @@ class MockShopeeData extends Command
                 }
 
                 $result = $response->json();
-
-                // เช็คสถานะการตอบกลับแบบใหม่ตามที่ GAS ส่งกลับมา (GAS ส่ง status: 'error' ไม่ใช่ success: false)
-                if (isset($result['status']) && $result['status'] === 'error') {
+                if (isset($result['success']) && !$result['success']) {
                     $this->newLine();
-                    $this->error("❌ [GAS Internal Error] " . ($result['message'] ?? 'ไม่ทราบสาเหตุ'));
+                    $this->error("❌ [GAS Internal Error] " . ($result['error'] ?? 'ไม่ทราบสาเหตุ'));
                     break;
                 }
 
@@ -101,7 +101,8 @@ class MockShopeeData extends Command
             $bar->advance($currentChunkSize);
 
             // ─── CRITICAL SLEEP ───────────────────────────────────────
-            // หน่วงเวลา 1.5 วินาที เพื่อปล่อยให้ LockService/API Quota ใน GAS คลายตัว
+            // หน่วงเวลา 1.5 วินาที เพื่อปล่อยให้ LockService ใน GAS คลายตัว
+            // ป้องกันปัญหากลุ่ม Request ชนกันเองจนเกิดอาการ Server Busy (Lock Timeout)
             if ($currentCount < $total) {
                 usleep(1500000);
             }
@@ -109,6 +110,6 @@ class MockShopeeData extends Command
 
         $bar->finish();
         $this->newLine();
-        $this->info("✨ เสร็จสิ้นภารกิจ! ยิงข้อมูลจำลองเข้าคลังสำเร็จทั้งหมด {$currentCount} รายการ");
+        $this->info("✨ เสร็จสิ้นภารกิจ! ยิงข้อมูลจำลองเข้าคลังสำนเร็จทั้งหมด {$currentCount} รายการ");
     }
 }

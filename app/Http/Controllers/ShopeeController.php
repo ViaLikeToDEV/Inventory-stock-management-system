@@ -102,7 +102,7 @@ class ShopeeController extends Controller
                 'tracking_number' => 'nullable|string',
             ]);
 
-            $GAS_URL = config('services.shopee_script_url');
+            $GAS_URL = 'https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec';
 
             if (!$GAS_URL) {
                 return response()->json([

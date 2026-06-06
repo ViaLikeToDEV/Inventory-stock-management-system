@@ -3,6 +3,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ItemsBarcodeController;
 use App\Http\Controllers\ProductSyncController;
 use App\Http\Controllers\ShopeeController;
+use App\Http\Controllers\IndexedShopee;
+
 
 
 Route::prefix('barcode')->group(function () {
@@ -13,9 +15,10 @@ Route::prefix('barcode')->group(function () {
 Route::post('/sync-products',   [ProductSyncController::class, 'sync'])->name('sync-products');
 
 
-// Shopee section
 Route::prefix('shopee-api')->group(function () {
-    Route::get('/shopeeq', [ShopeeController::class, 'queryShopeeData'])->name('shopee-query');
-    Route::post('/shopeeq', [ShopeeController::class, 'queryShopeeData'])->name('shopee-query');
-    Route::post('/set-packed', [ShopeeController::class, 'setpacked'])->name('shopee-setpacked');
+    Route::controller(ShopeeController::class)->group(function () {
+        Route::get('/shopeeq', 'queryShopeeData')->name('shopee-query');
+        Route::post('/shopeeq', 'queryShopeeData')->name('shopee-query');
+        Route::post('/set-packed', 'setpacked')->name('shopee-setpacked');
+    });
 });

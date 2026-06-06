@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 class PlaygroundController extends Controller
 {
+    private string $googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbzmtPYi0Ps81ddEeg9bEzl9clO6ZFs5dmV5RNh2KWkCkQYO6c3G8bbzKUcwB9iGyHyk5A/exec';
+
 
     public function page(){
         return inertia::render('pg');
@@ -30,7 +32,7 @@ class PlaygroundController extends Controller
     }
 
     public function pgfunc(){
-        $GAS = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
+        $GAS = $this->googleAppsScriptUrl;
 
         $mockRows = [
             [
@@ -111,12 +113,12 @@ class PlaygroundController extends Controller
         // ─── CONFIGURATION (แก้ไขตรงนี้ได้เลย) ───────────────────────
 
         // URL ของ Google Apps Script Web App ที่ได้จากการ Deploy (เปลี่ยนเป็นของคุณ)
-        $webAppUrl = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
+        $webAppUrl = $this->googleAppsScriptUrl;
 
         // พารามิเตอร์ที่ต้องการ Hardcode ส่งไปยัง handleQuery
         $payload = [
             'action'    => 'query',
-            'yearMonth' => '2026-06' // รูปแบบ YYYY-MM ตามที่ GAS Validate ไว้
+            'yearMonth' => '2026-05' // รูปแบบ YYYY-MM ตามที่ GAS Validate ไว้
         ];
 
         // ─── EXECUTION ──────────────────────────────────────────────
@@ -174,12 +176,13 @@ class PlaygroundController extends Controller
     }
 
 
-    public function querySingle()
+    public function querySingle(Request $req)
     {
+        $req->validate([
+            'q' => 'required|string'
+        ]);
         // ===== Hardcoded Config =====
-        $googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbzwB9taqtlBjTkhsCvNf0GnEpfc0tCljMLVQspJB8g64m7E48UeSO2oG5PQ11642210/exec';
-
-        $trackingNumber = 'TH23802592460382B';
+        $trackingNumber = $req->q;
         // ============================
 
         $payload = [
@@ -189,7 +192,7 @@ class PlaygroundController extends Controller
 
         $response = Http::timeout(30)
             ->acceptJson()
-            ->post($googleAppsScriptUrl, $payload);
+            ->post($this->googleAppsScriptUrl, $payload);
 
         if (!$response->successful()) {
             return response()->json([
@@ -197,6 +200,81 @@ class PlaygroundController extends Controller
                 'error'   => 'Failed to connect to Google Apps Script',
                 'status'  => $response->status(),
             ], 500);
+        }
+
+        return response()->json($response->json());
+    }
+
+    public function getDailySummary()
+    {
+        // ════════════════════════════════════════════════
+        // 🛑 HARDCODED VARIABLES (แก้ตรงนี้ได้เลยตาม Requirement)
+        // ════════════════════════════════════════════════
+        $gasUrl = $this->googleAppsScriptUrl;
+
+        // รูปแบบต้องเป็น YYYY-MM-DD ตามที่ GAS ฝั่งนู้นดักไว้ด้วย Regex
+        $targetDate = '2026-05-08';
+        // ════════════════════════════════════════════════
+
+        // ยิง POST Request ไปที่ Google Apps Script
+        $response = Http::post($gasUrl, [
+            'action' => 'query_daily_summary',
+            'date'   => $targetDate,
+        ]);
+
+        if ($response->successful()) {
+            $data = $response->json();
+
+            // 🚨 ดักเคสที่ GAS ไม่ได้ส่ง JSON กลับมา (มันจะกลายเป็น null)
+            if (is_null($data)) {
+                return response()->json([
+                    'status'   => 'error',
+                    'message'  => 'ชิบหายละ GAS ไม่ได้ส่ง JSON กลับมา! ลองดู Raw Body ซิว่ามันด่าอะไร',
+                    'raw_body' => $response->body() // ลากสิ่งที่ Google พ่นออกมาให้ดูเต็มๆ
+                ], 400);
+            }
+
+            // เช็กต่อว่า Logic ฝั่ง GAS return success: true หรือเปล่า
+            if (isset($data['success']) && $data['success'] === true) {
+                return response()->json([
+                    'status'  => 'success',
+                    'message' => 'ดึงข้อมูลสำเร็จ',
+                    'data'    => $data
+                ]);
+            }
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => $data['error'] ?? 'GAS ส่งคืน success: false แต่ไม่มี error message'
+            ], 400);
+        }
+
+        // กรณีเน็ตหลุด, URL ผิด หรือ GAS พัง
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'ไม่สามารถเชื่อมต่อกับ Google Apps Script ได้',
+            'details' => $response->body()
+        ], $response->status());
+    }
+
+    public function pack(Request $req) {
+        $req->validate([
+            'q' => 'required|string'
+        ]);
+
+        $payload = [
+            'action' => 'pack',
+            'tracking_number' => $req->q,
+        ];
+
+        $response = Http::timeout(15)->post($this->googleAppsScriptUrl, $payload);
+
+        if ($response->failed()) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Upstream request failed',
+                'status'  => $response->status(),
+            ], 502);
         }
 
         return response()->json($response->json());
