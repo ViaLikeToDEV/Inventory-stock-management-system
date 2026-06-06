@@ -417,7 +417,7 @@ export default function Packing() {
         }
     };
 
-    const startRecording = () => {
+    const startRecording = useCallback(() => {
         if (!streamRef.current) return;
         recordedChunksRef.current = [];
         const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
@@ -428,7 +428,7 @@ export default function Packing() {
         setIsRecording(true);
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
-    };
+    }, []); // แยกรันตาม refs ไม่ต้องมี dependency ตัวอื่น
 
     // ปรับให้รับ orderId เข้ามาโดยตรง เพื่อรองรับทั้ง TT และ Shopee
     const stopRecording = (saveFile: boolean, targetOrderId?: string) => {
@@ -745,11 +745,32 @@ function ShopeeVerifyPage({
     const handleProductScan = useCallback((barcode: string) => {
         setUnknownBarcode('');
         const target = orderData.products.find(p => p.barcode === barcode);
-        if (!target?.barcode) { setUnknownBarcode(barcode); setFlashKey(k => k + 1); return; }
+
+        // Case 1: บาร์โค้ดมั่ว/ไม่มีในระบบ
+        if (!target?.barcode) {
+            setUnknownBarcode(barcode);
+            setFlashKey(k => k + 1);
+            return;
+        }
+
         const current = scanCounts[target.barcode] ?? 0;
-        if (current >= target.quantity) { setFlashKey(k => k + 1); return; }
+
+        // Case 2: สแกนเกินจำนวนที่สั่งซื้อ
+        if (current >= target.quantity) {
+            setFlashKey(k => k + 1);
+            return;
+        }
+
+        // Case 3: สแกนผ่าน (Valid) -> เริ่มอัดวิดีโอ (ถ้ายังไม่ได้อัด) และเพิ่มยอด
+        // เช็ค state จาก mediaRecorderRef หรือ isRecording (แนะนำใช้ ref เช็คจะชัวร์สุดในจังหวะ callback ซ้อนกัน)
+        if (!isRecording) {
+            startRecording();
+        }
+
         setScanCounts({ ...scanCounts, [target.barcode]: current + 1 });
-    }, [orderData, scanCounts]);
+
+        // อย่าลืมเพิ่ม startRecording เข้าไปใน Dependency Array ด้วยล่ะ!
+    }, [orderData, scanCounts, startRecording]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key !== 'Enter') return;
@@ -761,6 +782,19 @@ function ShopeeVerifyPage({
     };
 
     const handleShopeeSave = async () => {
+        // เช็กก่อนเลยว่าแพ็กครบหรือยัง ถ้ายังไม่ครบก็ไม่ต้องเดินหน้าต่อ
+        if (packedQuantity !== totalQuantity) {
+            import('sweetalert2').then((Swal) => {
+                Swal.default.fire({
+                    icon: 'warning',
+                    title: 'แพ็กของยังไม่ครบ!',
+                    text: `กรุณาแพ็กให้ครบจำนวนก่อนบันทึก (จำนวนที่แพ็ก: ${packedQuantity}/${totalQuantity})`,
+                    confirmButtonText: 'ตกลง'
+                });
+            });
+            return; // ตัดจบตรงนี้ ไม่รันโค้ดข้างล่างต่อ
+        }
+
         // ให้บันทึกวิดีโอก่อน
         stopRecording(true);
         import('sweetalert2').then(async (Swal) => {
