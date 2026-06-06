@@ -12,7 +12,7 @@ class ShopeeController extends Controller
 {
     public function queryShopeeData(Request $req) {
         $req->validate([
-            'q' => 'required|string'
+            'q' => 'required|string|max:20'
         ]);
 
         $searchId = trim($req->q);
@@ -98,8 +98,8 @@ class ShopeeController extends Controller
         {
             // 1. Validate ข้อมูลที่ส่งมาจาก React (ยอมให้ส่ง tracking_number มาด้วย)
             $req->validate([
-                'order_sn' => 'required|string',
-                'tracking_number' => 'nullable|string',
+                'order_sn' => 'required|string|max:20',
+                'tracking_number' => 'nullable|string|max:20',
             ]);
 
             $GAS_URL = 'https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec';

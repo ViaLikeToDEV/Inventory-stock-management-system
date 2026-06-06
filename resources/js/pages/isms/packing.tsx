@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon, Video, VideoOff, Circle, UploadCloud } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon, Video, VideoOff, Circle, UploadCloud, Folder} from 'lucide-react';
 import axios from 'axios';
 
 // ─────────────────────────────────────────────
@@ -28,6 +28,11 @@ interface ShopeeOrder {
     order_sn: string;
     is_packed: number;
     products: ShopeeProduct[];
+}
+
+interface ShopeePanelProps {
+    onOrderFound: (order: any) => void;
+    saveDirectoryHandle: any; // 👈 เพิ่มบรรทัดนี้ (หรือเปลี่ยน any เป็น FileSystemDirectoryHandle ถ้าอยากได้ Type แม่นๆ)
 }
 
 // ─────────────────────────────────────────────
@@ -100,7 +105,7 @@ function ProductVerifyRow({ product, scanned }: { product: ShopeeProduct | any; 
 // ─────────────────────────────────────────────
 // Sub-component: Shopee Panel
 // ─────────────────────────────────────────────
-function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => void }) {
+function ShopeePanel({ onOrderFound, saveDirectoryHandle }: ShopeePanelProps) {
     const [shopeeMode, setShopeeMode] = useState<ShopeeMode>('search');
     const [query, setQuery] = useState('');
     const [isFocused, setIsFocused] = useState(false);
@@ -169,36 +174,58 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
         if (e.key === 'Enter') { e.preventDefault(); handleSearch(); }
     };
 
+    const isSearchDisabled = !saveDirectoryHandle || isLoading;
+
     return (
         <div className="w-full flex flex-col gap-3">
-            <ScannerStatusBar isFocused={isFocused} mode={shopeeMode} />
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <label className="text-gray-400 block mb-2">ค้นหาออเดอร์ (Shopee)</label>
-                <div className="flex gap-2">
-                    <input
-                        ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handleKeyDown}
-                        onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} disabled={isLoading}
-                        placeholder="สแกน / พิมพ์ Tracking หรือ Order SN..."
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#ee4d2d]"
-                    />
-                    <button
-                        onClick={handleSearch}
-                        disabled={isLoading || !query.trim()}
-                        className="bg-[#ee4d2d] hover:bg-[#d73f21] disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 flex-shrink-0"
-                    >
-                        {isLoading ? (
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                            </svg>
-                        ) : (
-                            <ScanLine className="w-4 h-4" />
-                        )}
-                        ค้นหา
-                    </button>
+        <ScannerStatusBar isFocused={isFocused} mode={shopeeMode} />
+
+        {/* เพิ่ม relative เข้าไปที่กล่อง เพื่อให้ overlay ทำงานได้ */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 relative overflow-hidden">
+
+            {/* 🔒 OVERLAY: ถ้าไม่มี handle จะขึ้นม่านกระจกบังและล็อกไม่ให้กดอะไรได้เลย */}
+            {!saveDirectoryHandle && (
+                <div className="absolute inset-0 bg-gray-50/60 backdrop-blur-[1px] z-10 flex items-center justify-center border border-dashed border-gray-300 rounded-xl">
+                    <span className="text-sm font-medium text-gray-500 bg-white px-3 py-1.5 rounded-md shadow-sm border border-gray-100">
+                        ⚠️ กรุณาเลือกโฟลเดอร์สำหรับบันทึกไฟล์ก่อนค้นหา
+                    </span>
                 </div>
-                {errorMsg && <div className="mt-2.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2"><AlertCircle className="w-3.5 h-3.5" />{errorMsg}</div>}
+            )}
+
+            <label className={`block mb-2 text-sm font-medium ${!saveDirectoryHandle ? 'text-gray-300' : 'text-gray-500'}`}>
+                ค้นหาออเดอร์ (Shopee)
+            </label>
+
+            <div className="flex gap-2">
+                <input
+                    ref={inputRef}
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onKeyDown={isSearchDisabled ? undefined : handleKeyDown} // ล็อกปุ่ม Enter บนคีย์บอร์ด
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    disabled={isSearchDisabled} // ล็อก input
+                    placeholder={saveDirectoryHandle ? "สแกน / พิมพ์ Tracking หรือ Order SN..." : "ยังไม่ได้เลือกโฟลเดอร์..."}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#ee4d2d] disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+                />
+                <button
+                    onClick={handleSearch}
+                    disabled={isSearchDisabled || !query.trim()} // ล็อกปุ่มกด
+                    className="bg-[#ee4d2d] hover:bg-[#d73f21] disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 flex-shrink-0 disabled:cursor-not-allowed"
+                >
+                    {isLoading ? (
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                    ) : (
+                        <ScanLine className="w-4 h-4" />
+                    )}
+                    ค้นหา
+                </button>
             </div>
+            {errorMsg && <div className="mt-2.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2"><AlertCircle className="w-3.5 h-3.5" />{errorMsg}</div>}
+        </div>
         </div>
     );
 }
@@ -349,8 +376,25 @@ export default function Packing() {
             // @ts-ignore
             const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
             setSaveDirectoryHandle(dirHandle);
-            alert('เชื่อมต่อโฟลเดอร์ในเครื่องแล้วครับ!');
-        } catch (error) { console.error('ยกเลิกการเลือกโฟลเดอร์:', error); }
+
+            // 📦 dynamic import เฉพาะตอนที่ฟังก์ชันนี้ทำงานสำเร็จ
+            const { default: Swal } = await import('sweetalert2');
+
+            Swal.fire({
+                icon: 'success',
+                title: 'เชื่อมต่อสำเร็จ',
+                text: '✅ช่องค้นหาและแพ็คออเดอร์ปลดล็อคแล้ว',
+                timer: 2000, // ⏱️ ปิดตัวเองภายใน 2000 มิลลิวินาที (2 วินาที)
+                timerProgressBar: true, // ตัววิ่งด้านล่าง บอกเวลาถอยหลัง (ดูโปรขึ้นเยอะ)
+                showConfirmButton: false, // ซ่อนปุ่มตกลงไปเลย เพราะมันจะปิดเองอยู่แล้ว
+                customClass: {
+                    popup: 'rounded-xl'
+                }
+            });
+
+        } catch (error) {
+            console.error('ยกเลิกการเลือกโฟลเดอร์:', error);
+        }
     };
 
     const saveVideoLocally = async (blob: Blob, fileName: string) => {
@@ -566,8 +610,25 @@ export default function Packing() {
                     </button>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button onClick={handleSelectDirectory} className={`px-4 py-2 rounded-lg font-bold shadow-sm transition-all text-sm ${saveDirectoryHandle ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                        {saveDirectoryHandle ? '✅ เชื่อมต่อโฟลเดอร์แล้ว' : '📁 เลือกโฟลเดอร์เซฟคลิป'}
+                    <button
+                        onClick={handleSelectDirectory}
+                        className={`px-4 py-2 rounded-lg shadow-sm transition-all text-sm flex items-center gap-2 font-medium ${
+                            saveDirectoryHandle
+                                ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        {saveDirectoryHandle ? (
+                            <>
+                                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                <span>เชื่อมต่อแล้ว</span>
+                            </>
+                        ) : (
+                            <>
+                                <Folder className="w-4 h-4" />
+                                <span>แฟ้มบันทึกวิดีโอ</span>
+                            </>
+                        )}
                     </button>
                     {platform === 'tiktok' && (
                         <div className="flex items-center gap-3 border-l pl-4 border-gray-200">
@@ -581,7 +642,10 @@ export default function Packing() {
             </div>
 
             {platform === 'shopee' ? (
-                <ShopeePanel onOrderFound={(order) => setShopeeOrder(order)} />
+                <ShopeePanel
+                    onOrderFound={(order) => setShopeeOrder(order)}
+                    saveDirectoryHandle={saveDirectoryHandle} // 👈 ส่ง State นี้เข้าไปด้วย
+                />
             ) : (
                 <div className="flex flex-col gap-4 w-full">
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
