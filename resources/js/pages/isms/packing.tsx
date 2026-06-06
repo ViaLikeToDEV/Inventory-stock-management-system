@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon} from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ShoppingBag, ScanLine, CheckCircle2, AlertCircle, Package, Clock as ClockIcon, Video, VideoOff, Circle, UploadCloud } from 'lucide-react';
 import axios from 'axios';
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 type Platform = 'tiktok' | 'shopee';
 type ShopeeMode = 'search' | 'skunotfound';
+
+type UploadState = {
+    status: 'uploading' | 'success' | 'error';
+    progress: number;
+    blob: Blob;
+    fileName: string;
+};
 
 interface ShopeeProduct {
     sku: string;
@@ -25,7 +33,7 @@ interface ShopeeOrder {
 // ─────────────────────────────────────────────
 // Sub-component: Status Bar
 // ─────────────────────────────────────────────
-function ScannerStatusBar({ isFocused, mode }: { isFocused: boolean; mode: ShopeeMode }) {
+function ScannerStatusBar({ isFocused, mode }: { isFocused: boolean; mode: ShopeeMode | 'verify' }) {
     const label = mode === 'search'
         ? (isFocused ? 'พร้อมรับบาร์โค้ด — สแกนหรือพิมพ์ได้เลย' : 'คลิกที่ช่องค้นหาเพื่อเริ่มสแกน')
         : (isFocused ? 'พร้อมสแกนสินค้า — วาง barcode ที่ scanner' : 'กล่องรับสแกนไม่มี focus — คลิกที่ช่องก่อน');
@@ -33,35 +41,14 @@ function ScannerStatusBar({ isFocused, mode }: { isFocused: boolean; mode: Shope
     const modeTag = mode === 'search' ? 'SEARCH MODE' : 'VERIFY MODE';
 
     return (
-        <div
-            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
-                isFocused
-                    ? mode === 'search'
-                        ? 'bg-emerald-50 border border-emerald-300 text-emerald-800'
-                        : 'bg-blue-50 border border-blue-300 text-blue-800'
-                    : 'bg-gray-100 border border-gray-200 text-gray-500'
-            }`}
-        >
-            {/* Pulse dot */}
+        <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${isFocused ? (mode === 'search' ? 'bg-emerald-50 border border-emerald-300 text-emerald-800' : 'bg-blue-50 border border-blue-300 text-blue-800') : 'bg-gray-100 border border-gray-200 text-gray-500'}`}>
             <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                {isFocused && (
-                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
-                        mode === 'search' ? 'bg-emerald-400' : 'bg-blue-400'
-                    }`} />
-                )}
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                    isFocused
-                        ? mode === 'search' ? 'bg-emerald-500' : 'bg-blue-500'
-                        : 'bg-gray-400'
-                }`} />
+                {isFocused && <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${mode === 'search' ? 'bg-emerald-400' : 'bg-blue-400'}`} />}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isFocused ? (mode === 'search' ? 'bg-emerald-500' : 'bg-blue-500') : 'bg-gray-400'}`} />
             </span>
             <ScanLine className="w-4 h-4 flex-shrink-0" />
             <span className="flex-1">{label}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-md ${
-                isFocused
-                    ? mode === 'search' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-200 text-gray-500'
-            }`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-md ${isFocused ? (mode === 'search' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700') : 'bg-gray-200 text-gray-500'}`}>
                 {modeTag}
             </span>
         </div>
@@ -71,50 +58,39 @@ function ScannerStatusBar({ isFocused, mode }: { isFocused: boolean; mode: Shope
 // ─────────────────────────────────────────────
 // Sub-component: Product Row (Verify Mode)
 // ─────────────────────────────────────────────
-function ProductVerifyRow({ product, scanned }: { product: ShopeeProduct; scanned: number }) {
-    const isDone = scanned >= product.quantity;
+function ProductVerifyRow({ product, scanned }: { product: ShopeeProduct | any; scanned: number }) {
+    // รองรับทั้ง ShopeeProduct และ TikTok Product
+    const isShopee = product.quantity !== undefined;
+    const qty = isShopee ? product.quantity : Number(product['Quantity']);
+    const pName = isShopee ? product.product_name : product['Product Name'];
+    const varName = isShopee ? product.variant_name : '';
+    const sku = isShopee ? product.sku : '';
+    const barcode = isShopee ? product.barcode : '';
+
+    const isDone = scanned >= qty;
     const isPartial = scanned > 0 && !isDone;
-    const pct = Math.min(100, Math.round((scanned / product.quantity) * 100));
+    const pct = Math.min(100, Math.round((scanned / qty) * 100));
 
     return (
-        <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 ${
-            isDone
-                ? 'bg-emerald-50 border-emerald-200'
-                : isPartial
-                    ? 'bg-amber-50 border-amber-200'
-                    : 'bg-white border-gray-200'
-        }`}>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                isDone ? 'bg-emerald-100' : isPartial ? 'bg-amber-100' : 'bg-gray-100'
-            }`}>
-                {isDone
-                    ? <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    : <Package className={`w-5 h-5 ${isPartial ? 'text-amber-600' : 'text-gray-400'}`} />
-                }
+        <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 ${isDone ? 'bg-emerald-50 border-emerald-200' : isPartial ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isDone ? 'bg-emerald-100' : isPartial ? 'bg-amber-100' : 'bg-gray-100'}`}>
+                {isDone ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <Package className={`w-5 h-5 ${isPartial ? 'text-amber-600' : 'text-gray-400'}`} />}
             </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{product.product_name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                    {product.variant_name === '❌ ไม่พบข้อมูล SKU นี้ในระบบ' ? `SKU: ${product.sku}` : product.variant_name}
-                    {product.barcode && (
-                        <span className="font-mono ml-2 text-gray-400">{product.barcode}</span>
-                    )}
-                </p>
+            <div className="flex-1 min-w-0 pr-2">
+                <p className="text-sm font-medium text-gray-800 truncate" title={pName}>{pName}</p>
+                {isShopee && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                        {varName === '❌ ไม่พบข้อมูล SKU นี้ในระบบ' ? `SKU: ${sku}` : varName}
+                        {barcode && <span className="font-mono ml-2 text-gray-400">{barcode}</span>}
+                    </p>
+                )}
             </div>
             <div className="flex items-center gap-2.5 flex-shrink-0">
-                {/* Progress bar */}
                 <div className="w-16 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                    <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                            isDone ? 'bg-emerald-500' : isPartial ? 'bg-amber-400' : 'bg-gray-300'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                    />
+                    <div className={`h-full rounded-full transition-all duration-300 ${isDone ? 'bg-emerald-500' : isPartial ? 'bg-amber-400' : 'bg-gray-300'}`} style={{ width: `${pct}%` }} />
                 </div>
-                <span className={`text-sm font-semibold min-w-[40px] text-right ${
-                    isDone ? 'text-emerald-700' : isPartial ? 'text-amber-700' : 'text-gray-600'
-                }`}>
-                    {scanned}/{product.quantity}
+                <span className={`text-sm font-semibold min-w-[40px] text-right ${isDone ? 'text-emerald-700' : isPartial ? 'text-amber-700' : 'text-gray-600'}`}>
+                    {scanned}/{qty}
                 </span>
             </div>
         </div>
@@ -122,7 +98,7 @@ function ProductVerifyRow({ product, scanned }: { product: ShopeeProduct; scanne
 }
 
 // ─────────────────────────────────────────────
-// Sub-component: Shopee Panel (Search + Verify)
+// Sub-component: Shopee Panel
 // ─────────────────────────────────────────────
 function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => void }) {
     const [shopeeMode, setShopeeMode] = useState<ShopeeMode>('search');
@@ -130,130 +106,36 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
     const [isFocused, setIsFocused] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [orderData, setOrderData] = useState<ShopeeOrder | null>(null);
-    const [scanCounts, setScanCounts] = useState<Record<string, number>>({});
-    const [unknownBarcode, setUnknownBarcode] = useState('');
-    const [flashKey, setFlashKey] = useState(0);
     const [invalidProducts, setInvalidProducts] = useState<ShopeeProduct[]>([]);
-
     const inputRef = useRef<HTMLInputElement>(null);
 
-    // Auto-focus on mount
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
+    useEffect(() => { inputRef.current?.focus(); }, []);
 
-    const resetToSearch = useCallback(() => {
-        setShopeeMode('search');
-        setOrderData(null);
-        setScanCounts({});
-        setQuery('');
-        setErrorMsg('');
-        setUnknownBarcode('');
-        setTimeout(() => {
-            inputRef.current?.focus();
-            setIsFocused(true);
-        }, 100);
-    }, []);
-
-    // 🟩 แยกฟังก์ชัน handleSync ออกมาด้านนอกเพื่อให้เรียกใช้ง่ายๆ
     const handleSync = async () => {
-        // 1. ดึง SweetAlert2 มาเตรียมไว้
         const Swal = (await import('sweetalert2')).default;
-
-        // 2. ขึ้น Pop-up กำลังโหลด (บล็อกหน้าจอไม่ให้ยูสเซอร์กดซ้ำ)
-        Swal.fire({
-            title: 'กำลังซิงค์ข้อมูล...',
-            text: 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อกับ Shopee',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            didOpen: () => {
-                Swal.showLoading(); // แสดง Spinner หมุน ๆ
-            }
-        });
-
+        Swal.fire({ title: 'กำลังซิงค์ข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // ใช้ axios.post ควบคู่กับ route() ของ Ziggy
-            const res = await axios.post(route('sync-products'));
-
-            // axios แกะ json มาให้เสร็จสรรพอยู่ใน res.data (ถ้าอยากเอาไปใช้ต่อ)
-            const data = res.data;
-
-            // 3. ซิงค์สำเร็จ -> เปลี่ยน Pop-up เป็นสีเขียวชวนสบายใจ
-            await Swal.fire({
-                title: 'ซิงค์ข้อมูลสำเร็จ!',
-                text: 'ระบบได้อัปเดตข้อมูลสินค้าเรียบร้อยแล้ว',
-                icon: 'success',
-                timer: 2000, // ปิดเองใน 2 วินาที
-                showConfirmButton: false
-            });
-
+            await axios.post(route('sync-products'));
+            await Swal.fire({ title: 'ซิงค์ข้อมูลสำเร็จ!', icon: 'success', timer: 2000, showConfirmButton: false });
             setTimeout(() => inputRef.current?.focus(), 100);
-
         } catch (err: any) {
-            // Axios error handling: ถ้ามีสเตตัสพังๆ กลับมาจาก Server จะดึง error message มาแสดง
-            // แต่ถ้าไม่มี (เช่น เน็ตหลุด) ก็จะใช้ Fallback message แทน
-            const errorMessage = err.response?.data?.message || err.message || 'ไม่สามารถซิงค์ข้อมูลได้';
-
-            // 4. ซิงค์พัง -> เปลี่ยน Pop-up เป็นสีแดงแจ้งเตือน
-            await Swal.fire({
-                title: 'เกิดข้อผิดพลาด',
-                text: errorMessage,
-                icon: 'error',
-                confirmButtonText: 'รับทราบ'
-            });
+            await Swal.fire({ title: 'เกิดข้อผิดพลาด', text: err.message, icon: 'error' });
         }
     };
 
-    // 🟩 ส่วนของ useEffect จะเหลือคลีน ๆ แค่นี้เลย
     useEffect(() => {
         if (shopeeMode === 'skunotfound') {
             import('sweetalert2').then((Swal) => {
-
-                const productListHtml = `
-                <p style="
-                    font-size: 12px;
-                    color: #9ca3af;
-                    margin-bottom: 10px;
-                    text-align: left;
-                ">ต้องการอัพเดตฐานข้อมูลในเครื่อง?</p>
-
-                <div style="
-                    text-align: left;
-                    max-height: 180px;
-                    overflow-y: auto;
-                    background: #f9fafb;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
-                    padding: 10px 12px;
-                ">
-                    <ul style="margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 6px;">
-                    ${invalidProducts.map(p => `
-                        <li style="font-size: 13px; color: #374151;">
-                        <span style="font-weight: 600;">${p.sku || 'UndefinedSKU'}</span>
-                        <span style="color: #9ca3af; font-size: 11px; margin-left: 6px; font-family: monospace;">
-                            Barcode: ${p.barcode || 'ไม่มี'}
-                        </span>
-                        </li>
-                    `).join('')}
-                    </ul>
-                </div>
-                `;
-
+                const productListHtml = `<div style="text-align: left; max-height: 180px; overflow-y: auto;">...</div>`;
                 Swal.default.fire({
                     title: 'ไม่พบ SKU ในระบบ Shopee',
                     html: productListHtml,
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonText: 'ตกลง',
-                    cancelButtonText: 'ยกเลิก',
+                    confirmButtonText: 'อัปเดตฐานข้อมูล'
                 }).then((result) => {
-                    if (result.isConfirmed) {
-                        // เรียกฟังก์ชันซิงค์ที่มี Loading สวย ๆ ด้านบน
-                        handleSync();
-                    }
+                    if (result.isConfirmed) handleSync();
                     setInvalidProducts([]);
-                    setTimeout(() => inputRef.current?.focus(), 100);
                     setShopeeMode('search');
                 });
             });
@@ -266,162 +148,44 @@ function ShopeePanel({ onOrderFound }: { onOrderFound: (order: ShopeeOrder) => v
         setIsLoading(true);
         setErrorMsg('');
         try {
-
-            // Ziggy `route()` จะแปลงชื่อ 'shopee-query' เป็น URL ให้เอง
-            // Axios จะ Handle CSRF Token ให้อัตโนมัติถ้าตั้งค่า Global ไว้ (ถ้าไม่ได้ตั้ง สามารถใส่เพิ่มใน headers ได้)
             const response = await axios.post<ShopeeOrder>(route('shopee-query'), { q });
-
             const data = response.data;
-            const invalid = data.products.filter(p => p.barcode === null || p.barcode === undefined);
-
+            const invalid = data.products.filter(p => !p.barcode);
             if (invalid.length !== 0) {
                 setInvalidProducts(invalid);
                 setShopeeMode('skunotfound');
             } else {
-                onOrderFound(data); // ← ส่งขึ้น Parent
+                onOrderFound(data);
                 setQuery('');
             }
         } catch (err: any) {
-            // Axios Error จะอยู่ที่ err.response?.data
-            const errorMsg = err.response?.data?.message || err.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง';
-            setErrorMsg(errorMsg);
+            setErrorMsg(err.response?.data?.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleProductScan = useCallback((barcode: string) => {
-        if (!orderData) return;
-        setUnknownBarcode('');
-
-        const target = orderData.products.find(p => p.barcode === barcode);
-        if (!target || !target.barcode) {
-            setUnknownBarcode(barcode);
-            setFlashKey(k => k + 1);
-            return;
-        }
-
-        const current = scanCounts[target.barcode] ?? 0;
-        if (current >= target.quantity) {
-            setFlashKey(k => k + 1);
-            return;
-        }
-
-        const next = current + 1;
-        const nextCounts = { ...scanCounts, [target.barcode]: next };
-        setScanCounts(nextCounts);
-
-        // ตรวจสอบว่าแพ็คครบทุกชิ้นหรือยัง
-        const allDone = orderData.products.every(p =>
-            !p.barcode || (nextCounts[p.barcode] ?? 0) >= p.quantity
-        );
-
-        if (allDone) {
-            // ดึง SweetAlert2 มาใช้งานแบบ Dynamic หรือ Import ไว้ด้านบนก็ได้
-            import('sweetalert2').then(async (Swal) => {
-                // 1. แสดง Loading รอระหว่างยิง API
-                Swal.default.fire({
-                    title: 'กำลังบันทึกข้อมูล...',
-                    text: `กำลังอัปเดตสถานะออเดอร์ ${orderData.order_sn}`,
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    showConfirmButton: false,
-                    didOpen: () => {
-                        Swal.default.showLoading();
-                    }
-                });
-
-                try {
-                    // 2. ยิง HTTP POST ไปที่ Controller (ใช้ Ziggy route() เรียกตามชื่อ .name() ใน Laravel)
-                    const response = await axios.post(route('shopee-setpacked'), {
-                        order_sn: orderData.order_sn,
-                        tracking_number: orderData.tracking_number
-                    });
-
-                    // เช็ก Response จาก Laravel/GAS
-                    if (response.data?.status === 'success' || response.status === 200) {
-                        // 3. แจ้งเตือนสำเร็จ
-                        await Swal.default.fire({
-                            icon: 'success',
-                            title: 'แพ็คครบเรียบร้อย!',
-                            text: 'ระบบได้บันทึกสถานะลง Google Sheet แล้ว',
-                            timer: 2000,
-                            showConfirmButton: false
-                        });
-
-                        // 4. รีเซ็ตหน้าจอกลับไปค้นหา
-                        resetToSearch();
-                    } else {
-                        throw new Error(response.data?.message || 'GAS ตอบกลับมาแบบมี Error');
-                    }
-
-                } catch (error: any) {
-                    console.error(error);
-                    // 5. แจ้งเตือนเมื่อเกิดข้อผิดพลาด
-                    Swal.default.fire({
-                        icon: 'error',
-                        title: 'เกิดข้อผิดพลาด!',
-                        text: error.response?.data?.message || error.message || 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้',
-                        confirmButtonText: 'รับทราบ',
-                        confirmButtonColor: '#ee4d2d'
-                    });
-                }
-            });
-        }
-    }, [orderData, scanCounts, resetToSearch]);
-
-     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const val = e.currentTarget.value.trim();
-        if (!val) return;
-        handleSearch();
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleSearch(); }
     };
-
-    const remaining = orderData
-        ? orderData.products.reduce((acc, p) => acc + Math.max(0, p.quantity - (p.barcode ? (scanCounts[p.barcode] ?? 0) : 0)), 0)
-        : 0;
 
     return (
         <div className="w-full flex flex-col gap-3">
             <ScannerStatusBar isFocused={isFocused} mode={shopeeMode} />
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <label className="text-gray-400 block mb-2">ค้นหาออเดอร์</label>
+                <label className="text-gray-400 block mb-2">ค้นหาออเดอร์ (Shopee)</label>
                 <div className="flex gap-2">
                     <input
-                        ref={inputRef}
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
+                        ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handleKeyDown}
+                        onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} disabled={isLoading}
                         placeholder="สแกน / พิมพ์ Tracking หรือ Order SN..."
-                        autoComplete="off"
-                        disabled={isLoading}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#ee4d2d] focus:ring-2 focus:ring-[#ee4d2d]/10 transition-all placeholder:text-gray-300 disabled:opacity-50"
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#ee4d2d]"
                     />
-                    <button
-                        onClick={handleSearch}
-                        disabled={isLoading || !query.trim()}
-                        className="bg-[#ee4d2d] hover:bg-[#d73f21] disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 flex-shrink-0"
-                    >
-                        {isLoading ? (
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                            </svg>
-                        ) : (
-                            <ScanLine className="w-4 h-4" />
-                        )}
-                        ค้นหา
+                    <button onClick={handleSearch} disabled={isLoading || !query.trim()} className="bg-[#ee4d2d] hover:bg-[#d73f21] text-white px-5 py-2.5 rounded-lg text-sm flex items-center gap-1.5">
+                        <ScanLine className="w-4 h-4" /> ค้นหา
                     </button>
                 </div>
-                {errorMsg && (
-                    <div className="mt-2.5 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                        {errorMsg}
-                    </div>
-                )}
+                {errorMsg && <div className="mt-2.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2"><AlertCircle className="w-3.5 h-3.5" />{errorMsg}</div>}
             </div>
         </div>
     );
@@ -437,10 +201,29 @@ export default function Packing() {
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
-    const [shopeeOrder, setShopeeOrder] = useState<ShopeeOrder | null>(null); // เพิ่ม
+    const [shopeeOrder, setShopeeOrder] = useState<ShopeeOrder | null>(null);
+
+    // 🟢 TT Search & Scan States
+    const [barcodeDB, setBarcodeDB] = useState<Record<string, string>>({});
+    const [ttSearchQuery, setTtSearchQuery] = useState('');
+    const [ttScanQuery, setTtScanQuery] = useState('');
+    const [ttScanCounts, setTtScanCounts] = useState<Record<string, number>>({});
+    const [ttUnknownBarcode, setTtUnknownBarcode] = useState('');
+    const [ttIsScanFocused, setTtIsScanFocused] = useState(false);
+    const ttInputRef = useRef<HTMLInputElement>(null);
+    const ttScanInputRef = useRef<HTMLInputElement>(null);
+
+    // 🟢 Video Recording States (For both TT and Shopee)
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [saveDirectoryHandle, setSaveDirectoryHandle] = useState<any>(null);
+    const [uploadQueue, setUploadQueue] = useState<Record<string, UploadState>>({});
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordedChunksRef = useRef<Blob[]>([]);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         fetch('/get-packing-orders')
@@ -448,6 +231,7 @@ export default function Packing() {
             .then(data => {
                 const validOrders = data.data?.filter((item: any) => item['Order ID']) || [];
                 setOrders(validOrders);
+                if (data.products) setBarcodeDB(data.products);
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -456,77 +240,300 @@ export default function Packing() {
     useEffect(() => {
         const startCamera = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' } // ใช้กล้องหลังดีกว่าสำหรับ scan
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 streamRef.current = stream;
                 if (videoRef.current) videoRef.current.srcObject = stream;
-            } catch (err) {
-                console.error('ไม่สามารถเปิดกล้องได้:', err);
-            }
+            } catch (err) { console.error('ไม่สามารถเปิดกล้องได้:', err); }
         };
         const stopCamera = () => {
+            stopRecording(false);
             streamRef.current?.getTracks().forEach(t => t.stop());
             streamRef.current = null;
         };
 
-        if (selectedOrderId || shopeeOrder) startCamera(); // ← เพิ่ม shopeeOrder
+        if (selectedOrderId || shopeeOrder) startCamera();
         else stopCamera();
 
         return () => stopCamera();
-    }, [selectedOrderId, shopeeOrder]); // ← เพิ่ม dependency
+    }, [selectedOrderId, shopeeOrder]);
 
+    useEffect(() => {
+        if (selectedOrderId) {
+            setTtScanCounts({});
+            setTtUnknownBarcode('');
+            setTtScanQuery('');
+            setTimeout(() => ttScanInputRef.current?.focus(), 100);
+        }
+    }, [selectedOrderId]);
+
+    const handleTtSearch = async () => {
+        const query = ttSearchQuery.trim();
+        if (!query) return;
+        const found = orders.find(o => o['Order ID'] === query || o['Tracking Number'] === query);
+        if (found) {
+            setSelectedOrderId(found['Order ID']);
+            setTtSearchQuery('');
+        } else {
+            const Swal = (await import('sweetalert2')).default;
+            Swal.fire({ icon: 'error', title: 'ไม่พบออเดอร์', text: `ไม่พบข้อมูลออเดอร์: ${query}` });
+        }
+    };
+
+    const handleTtProductScan = (barcode: string) => {
+        setTtUnknownBarcode('');
+        const currentOrderItems = orders.filter(o => o['Order ID'] === selectedOrderId);
+        let matchedProductName = barcodeDB[barcode];
+        let targetItem = matchedProductName
+            ? currentOrderItems.find(item => String(item['Product Name']).includes(matchedProductName))
+            : currentOrderItems.find(item => String(item['Barcode']) === barcode);
+
+        if (!targetItem) {
+            setTtUnknownBarcode(barcode);
+            return;
+        }
+
+        const pName = targetItem['Product Name'];
+        const currentQty = ttScanCounts[pName] || 0;
+        const maxQty = Number(targetItem['Quantity']);
+        if (currentQty >= maxQty) return;
+
+        setTtScanCounts(prev => ({ ...prev, [pName]: currentQty + 1 }));
+    };
+
+    const getFileName = (orderId: string) => {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${orderId}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.webm`;
+    };
+
+    const blobToBase64 = (blob: Blob): Promise<string> => {
+        return new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onloadend = () => res((reader.result as string).split(',')[1]);
+            reader.onerror = rej;
+            reader.readAsDataURL(blob);
+        });
+    };
+
+    const uploadToGoogleDriveBackground = async (blob: Blob, fileName: string, orderId: string) => {
+        try {
+            const base64 = await blobToBase64(blob);
+            // 🚨 URL ใหม่ที่คุณให้มา
+            const response = await fetch("https://script.google.com/macros/s/AKfycby7pmxLZVsHwyDi_Btv3Qd1ANqV1Rd2Qr4W0YfhKfSJ6_SgCclXQV48nPCeDXXYSYtxuQ/exec", {
+                method: "POST", mode: "cors", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ fileName, video: base64 })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                setUploadQueue(prev => ({ ...prev, [orderId]: { ...prev[orderId], status: 'success', progress: 100 } }));
+            } else throw new Error("Upload response error");
+        } catch (error) {
+            setUploadQueue(prev => ({ ...prev, [orderId]: { ...prev[orderId], status: 'error' } }));
+        }
+    };
+
+    const handleSelectDirectory = async () => {
+        try {
+            // @ts-ignore
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            setSaveDirectoryHandle(dirHandle);
+            alert('เชื่อมต่อโฟลเดอร์ในเครื่องแล้วครับ!');
+        } catch (error) { console.error('ยกเลิกการเลือกโฟลเดอร์:', error); }
+    };
+
+    const saveVideoLocally = async (blob: Blob, fileName: string) => {
+        if (!saveDirectoryHandle) {
+            alert('🚨 กรุณากดเลือกโฟลเดอร์บันทึกคลิป (ปุ่มบนตาราง) ก่อนเริ่มงานครับ!');
+            return false;
+        }
+        try {
+            const now = new Date();
+            const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const monthDirHandle = await saveDirectoryHandle.getDirectoryHandle(yearMonth, { create: true });
+            const fileHandle = await monthDirHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return true;
+        } catch (error) {
+            alert('เกิดข้อผิดพลาดในการบันทึกไฟล์ลงคอมพิวเตอร์');
+            return false;
+        }
+    };
+
+    const startRecording = () => {
+        if (!streamRef.current) return;
+        recordedChunksRef.current = [];
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+        const recorder = new MediaRecorder(streamRef.current, { mimeType });
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data); };
+        recorder.start(100);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        setRecordingTime(0);
+        timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+    };
+
+    // ปรับให้รับ orderId เข้ามาโดยตรง เพื่อรองรับทั้ง TT และ Shopee
+    const stopRecording = (saveFile: boolean, targetOrderId?: string) => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+            setIsRecording(false); return;
+        }
+        if (saveFile && targetOrderId) {
+            mediaRecorderRef.current.onstop = async () => {
+                const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+                const fileName = getFileName(targetOrderId);
+                const localSaveSuccess = await saveVideoLocally(blob, fileName);
+
+                if (localSaveSuccess) {
+                    setUploadQueue(prev => ({ ...prev, [targetOrderId]: { status: 'uploading', progress: 0, blob, fileName } }));
+                    uploadToGoogleDriveBackground(blob, fileName, targetOrderId);
+                }
+                recordedChunksRef.current = [];
+            };
+        } else {
+            mediaRecorderRef.current.onstop = () => { recordedChunksRef.current = []; };
+        }
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+    };
+
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
+
+    const handleTtSave = () => {
+        stopRecording(true, selectedOrderId!);
+        setSelectedOrderId(null);
+    };
+
+    // ─── Shopee Verify View (UI เหมือน TikTok) ───
     if (shopeeOrder) {
         return (
             <div className="bg-[#eef1f8] min-h-full">
                 <ShopeeVerifyPage
                     orderData={shopeeOrder}
                     onBack={() => setShopeeOrder(null)}
-                    videoRef={videoRef}  // ← pass ลงไป
+                    videoRef={videoRef}
+                    isRecording={isRecording}
+                    recordingTime={recordingTime}
+                    formatTime={formatTime}
+                    startRecording={startRecording}
+                    stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
                 />
             </div>
         );
     }
 
-    // ─── TikTok: Camera View ───
+    // ─── TikTok Verify View (UI เหมือน Shopee เป๊ะ) ───
     if (selectedOrderId) {
         const currentOrderItems = orders.filter(o => o['Order ID'] === selectedOrderId);
+        const trackingNumber = currentOrderItems[0]?.['Tracking Number'] || selectedOrderId;
+        const totalQuantity = currentOrderItems.reduce((sum, item) => sum + Number(item['Quantity']), 0);
+        const packedQuantity = currentOrderItems.reduce((sum, item) => sum + (ttScanCounts[item['Product Name']] || 0), 0);
+        const isAllDone = packedQuantity >= totalQuantity;
+
         return (
-            <div className="p-8 bg-white min-h-full">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                    <div className="flex flex-col">
-                        <div className="bg-[#d9d9d9] aspect-[4/3] w-full relative flex items-center justify-center">
-                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />
-                            {!streamRef.current && <span className="text-gray-500 font-medium">กำลังเปิดกล้อง...</span>}
-                        </div>
-                        <button onClick={() => setSelectedOrderId(null)} className="mt-6 text-gray-500 hover:text-gray-800 transition-colors w-fit">
-                            <ArrowLeft className="w-10 h-10" />
-                        </button>
-                    </div>
-                    <div className="flex flex-col">
-                        <h3 className="text-2xl font-bold text-gray-900 mb-6">หมายเลข order : {selectedOrderId}</h3>
-                        <div className="w-full mb-10">
-                            <div className="grid grid-cols-4 bg-[#e2e2e2] text-gray-800 font-semibold py-2 px-2 border-b border-gray-400">
-                                <div className="col-span-3">สินค้า</div>
-                                <div className="text-right">จำนวน</div>
-                            </div>
-                            {currentOrderItems.map((item, idx) => (
-                                <div key={idx} className="grid grid-cols-4 items-center py-3 px-2 border-b border-gray-300 text-gray-700">
-                                    <div className="col-span-3 pr-4 truncate" title={item['Product Name']}>{item['Product Name']}</div>
-                                    <div className="text-right font-medium">0/{item['Quantity']}</div>
+            <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto p-8">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => { stopRecording(false); setSelectedOrderId(null); }} className="p-2.5 bg-white text-gray-500 border border-gray-200 rounded-xl hover:text-gray-900 transition-all"><ArrowLeft className="w-5 h-5" /></button>
+                    <div className="flex-1"><ScannerStatusBar isFocused={ttIsScanFocused} mode="verify" /></div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-5 items-start w-full">
+                    {/* ฝั่งซ้าย: กล้อง + ปุ่มวิดีโอ */}
+                    <div className="flex flex-col gap-3 w-full lg:w-[380px] flex-shrink-0">
+                        <div className="bg-black rounded-xl overflow-hidden aspect-[4/3] relative shadow-sm">
+                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                            {!streamRef.current && <span className="absolute inset-0 flex items-center justify-center text-gray-400 font-medium">กำลังเปิดกล้อง...</span>}
+                            {/* กรอบสแกนสีแดง */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="w-40 h-40 border-2 border-white/70 rounded-lg relative">
+                                    <span className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-[#ee4d2d] rounded-tl-sm" />
+                                    <span className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-[#ee4d2d] rounded-tr-sm" />
+                                    <span className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-[#ee4d2d] rounded-bl-sm" />
+                                    <span className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-[#ee4d2d] rounded-br-sm" />
                                 </div>
-                            ))}
+                            </div>
+                            {/* ป้าย REC */}
+                            {isRecording && (
+                                <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 px-3 py-1.5 rounded-full z-10 text-white text-sm font-bold tracking-wider">
+                                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /> REC {formatTime(recordingTime)}
+                                </div>
+                            )}
                         </div>
-                        <div className="flex gap-4">
-                            <button onClick={() => setSelectedOrderId(null)} className="bg-[#cc0000] hover:bg-red-700 text-white font-bold py-2 px-10 rounded-[20px] text-lg transition-colors">ยกเลิก</button>
-                            <button onClick={() => alert('เตรียมทำระบบบันทึกต่อไป!')} className="bg-[#2b3e52] hover:bg-[#1e2d3d] text-white font-bold py-2 px-10 rounded-[20px] text-lg transition-colors">บันทึก</button>
+                        {/* ปุ่มควบคุมวิดีโอ */}
+                        <div className="flex gap-2 w-full">
+                            {!isRecording ? (
+                                <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors shadow-sm">
+                                    <Video className="w-4 h-4" /> เริ่มบันทึกวิดีโอ
+                                </button>
+                            ) : (
+                                <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors">
+                                    <VideoOff className="w-4 h-4" /> ยกเลิกวิดีโอ
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ฝั่งขวา: รายละเอียด, ช่องสแกน, รายการสินค้า */}
+                    <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
+                        <div className="flex justify-between items-start w-full">
+                            <div>
+                                <p className="text-lg font-bold text-gray-900">{trackingNumber}</p>
+                                <p className="text-xs text-gray-400 font-mono mt-0.5">Order ID: {selectedOrderId}</p>
+                                {isAllDone ? (
+                                    <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700"><Package size={13} /> แพ็คครบแล้ว</span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700"><ClockIcon size={13} /> กำลังแพ็ค</span>
+                                )}
+                            </div>
+                            <div className="text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">{packedQuantity} / {totalQuantity}</div>
+                        </div>
+
+                        <div className="h-px bg-gray-200" />
+
+                        {/* ช่องสแกน TikTok */}
+                        <div>
+                            <label className="text-gray-500 text-xs font-medium block mb-1.5">สแกนสินค้าเพื่อเช็ค</label>
+                            <div className="flex gap-2">
+                                <input
+                                    ref={ttScanInputRef} value={ttScanQuery} onChange={e => setTtScanQuery(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') { e.preventDefault(); if (ttScanQuery.trim()) { handleTtProductScan(ttScanQuery.trim()); setTtScanQuery(''); } }
+                                    }}
+                                    onFocus={() => setTtIsScanFocused(true)} onBlur={() => setTtIsScanFocused(false)}
+                                    placeholder="สแกน barcode สินค้า..." className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#2b3e52]"
+                                />
+                                <button onClick={() => { stopRecording(false); setSelectedOrderId(null); }} className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 font-medium">ยกเลิก</button>
+                            </div>
+                            {ttUnknownBarcode && <div className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /> ไม่พบ barcode <span className="font-mono">{ttUnknownBarcode}</span></div>}
+                        </div>
+
+                        <div className="h-px bg-gray-200" />
+
+                        {/* รายการสินค้า TikTok */}
+                        <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                            {currentOrderItems.map((item, idx) => {
+                                const pName = item['Product Name'];
+                                return <ProductVerifyRow key={idx} product={item} scanned={ttScanCounts[pName] || 0} />
+                            })}
+                        </div>
+
+                        {/* ปุ่มบันทึก TikTok */}
+                        <div className="mt-auto pt-4 flex gap-3">
+                            <button onClick={handleTtSave} className="bg-[#1e2e40] hover:bg-[#0f172a] text-white font-bold py-3 px-6 rounded-xl transition-colors flex-1 shadow-sm text-sm">
+                                บันทึกและอัปโหลดวิดีโอ (TT)
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         );
-    } else if (orders){
-
     }
 
     // ─── Main Table View ───
@@ -537,135 +544,104 @@ export default function Packing() {
 
     return (
         <div className="p-8 bg-[#eef1f8] min-h-full flex flex-col gap-6">
-
-            {/* Platform Selector */}
             <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
                 <div className="flex bg-gray-100 p-1.5 rounded-xl w-fit gap-1">
-                    <button
-                        onClick={() => { setPlatform('tiktok'); setCurrentPage(1); }}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 ${
-                            platform === 'tiktok'
-                                ? 'bg-[#2b3e52] text-white shadow-md'
-                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-                        }`}
-                    >
-                        <ShoppingBag className="w-4 h-4" />
-                        TikTok Shop
+                    <button onClick={() => { setPlatform('tiktok'); setCurrentPage(1); }} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-all ${platform === 'tiktok' ? 'bg-[#2b3e52] text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>
+                        <ShoppingBag className="w-4 h-4" /> TikTok Shop
                     </button>
-                    <button
-                        onClick={() => { setPlatform('shopee'); setCurrentPage(1); }}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 ${
-                            platform === 'shopee'
-                                ? 'bg-[#ee4d2d] text-white shadow-md'
-                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-                        }`}
-                    >
-                        <ShoppingBag className="w-4 h-4" />
-                        Shopee
+                    <button onClick={() => { setPlatform('shopee'); setCurrentPage(1); }} className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-all ${platform === 'shopee' ? 'bg-[#ee4d2d] text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>
+                        <ShoppingBag className="w-4 h-4" /> Shopee
                     </button>
                 </div>
-
-                {platform === 'tiktok' && (
-                    <div className="flex items-center gap-3">
-                        <label className="text-gray-600 font-medium text-sm">แสดงหน้าละ :</label>
-                        <select
-                            className="border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-700 text-sm outline-none focus:border-blue-500 shadow-sm"
-                            value={itemsPerPage}
-                            onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                        >
-                            <option value={10}>10</option>
-                            <option value={30}>30</option>
-                            <option value={50}>50</option>
-                        </select>
-                    </div>
-                )}
+                <div className="flex items-center gap-4">
+                    <button onClick={handleSelectDirectory} className={`px-4 py-2 rounded-lg font-bold shadow-sm transition-all text-sm ${saveDirectoryHandle ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                        {saveDirectoryHandle ? '✅ เชื่อมต่อโฟลเดอร์แล้ว' : '📁 เลือกโฟลเดอร์เซฟคลิป'}
+                    </button>
+                    {platform === 'tiktok' && (
+                        <div className="flex items-center gap-3 border-l pl-4 border-gray-200">
+                            <label className="text-gray-500 font-medium text-sm">หน้าละ :</label>
+                            <select className="bg-transparent text-gray-800 font-bold outline-none cursor-pointer" value={itemsPerPage} onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+                                <option value={10}>10</option><option value={30}>30</option><option value={50}>50</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Platform Content */}
             {platform === 'shopee' ? (
                 <ShopeePanel onOrderFound={(order) => setShopeeOrder(order)} />
             ) : (
-                <div className="w-full bg-white shadow-sm rounded-lg overflow-hidden flex flex-col">
-                    <div className="grid grid-cols-[1.5fr_3fr_1fr_1.5fr] gap-4 bg-[#e2e2e2] text-gray-800 font-semibold py-4 px-8 border-b border-gray-300">
-                        <div>หมายเลขคำสั่งซื้อ</div>
-                        <div>สินค้า</div>
-                        <div className="text-center">จำนวน</div>
-                        <div className="text-right">สถานะ</div>
-                    </div>
-
-                    <div className="bg-white flex-1">
-                        {loading ? (
-                            <div className="text-center py-10 text-gray-500">กำลังดึงข้อมูล...</div>
-                        ) : uniqueOrders.length === 0 ? (
-                            <div className="text-center py-10 text-gray-500">ไม่พบข้อมูลคำสั่งซื้อ</div>
-                        ) : (
-                            currentData.map((uniqueId: any, index) => {
-                                const orderInfo = orders.find(o => o['Order ID'] === uniqueId);
-                                const totalQty = orders.filter(o => o['Order ID'] === uniqueId).reduce((sum, item) => sum + Number(item['Quantity']), 0);
-                                const hasMoreItems = orders.filter(o => o['Order ID'] === uniqueId).length > 1;
-                                return (
-                                    <div key={index} className="grid grid-cols-[1.5fr_3fr_1fr_1.5fr] gap-4 items-center py-4 px-8 border-b border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition">
-                                        <div className="truncate" title={orderInfo['Order ID']}>{orderInfo['Order ID']}</div>
-                                        <div className="truncate font-medium text-gray-700" title={orderInfo['Product Name']}>
-                                            {orderInfo['Product Name']} {hasMoreItems ? '(และสินค้าอื่นๆ)' : ''}
-                                        </div>
-                                        <div className="text-center text-base font-bold text-blue-600">{totalQty}</div>
-                                        <div className="text-right flex justify-end">
-                                            {orderInfo['IsPacked'] == 0 ? (
-                                                <button
-                                                    className="bg-[#eab308] hover:bg-[#ca9a04] text-white px-6 py-2 rounded font-medium shadow transition-colors"
-                                                    onClick={() => setSelectedOrderId(orderInfo['Order ID'])}
-                                                >
-                                                    เริ่มทำงาน
-                                                </button>
-                                            ) : (
-                                                <span className="text-green-600 font-bold px-6 py-2 bg-green-50 rounded">แพ็คเสร็จแล้ว</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-
-                    {!loading && uniqueOrders.length > 0 && (
-                        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-8 py-4">
-                            <div className="text-sm text-gray-600">
-                                แสดง {startIndex + 1} ถึง {Math.min(startIndex + itemsPerPage, uniqueOrders.length)} จากทั้งหมด {uniqueOrders.length} รายการ
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                    disabled={currentPage === 1}
-                                    className={`px-3 py-2 rounded flex items-center transition-colors ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-200'}`}
-                                >
-                                    <ChevronLeft className="w-5 h-5 mr-1" /> ก่อนหน้า
-                                </button>
-                                <span className="text-gray-700 font-medium px-4">หน้า {currentPage} / {totalPages || 1}</span>
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                    disabled={currentPage === totalPages || totalPages === 0}
-                                    className={`px-3 py-2 rounded flex items-center transition-colors ${currentPage === totalPages || totalPages === 0 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-200'}`}
-                                >
-                                    ถัดไป <ChevronRight className="w-5 h-5 ml-1" />
-                                </button>
-                            </div>
+                <div className="flex flex-col gap-4 w-full">
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                        <label className="text-gray-400 block mb-2 font-medium">ค้นหาออเดอร์ (TikTok)</label>
+                        <div className="flex gap-2">
+                            <input
+                                ref={ttInputRef} value={ttSearchQuery} onChange={e => setTtSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleTtSearch()}
+                                placeholder="สแกน / พิมพ์ หมายเลขคำสั่งซื้อ หรือ Tracking..."
+                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#2b3e52]"
+                            />
+                            <button onClick={handleTtSearch} className="bg-[#2b3e52] hover:bg-[#1e2d3d] text-white px-5 py-2.5 rounded-lg text-sm flex items-center gap-1.5 font-medium">
+                                <ScanLine className="w-4 h-4" /> ค้นหา
+                            </button>
                         </div>
-                    )}
+                    </div>
+                    <div className="w-full bg-white shadow-sm rounded-xl overflow-hidden flex flex-col border border-gray-200">
+                        <div className="grid grid-cols-[1.5fr_3fr_1fr_1.5fr] gap-4 bg-[#f8fafc] text-gray-600 font-bold py-4 px-8 border-b border-gray-200 text-sm uppercase tracking-wider">
+                            <div>หมายเลขคำสั่งซื้อ</div>
+                            <div>สินค้า</div>
+                            <div className="text-center">จำนวน</div>
+                            <div className="text-right">สถานะ</div>
+                        </div>
+                        <div className="bg-white flex-1">
+                            {loading ? <div className="text-center py-10 text-gray-500">กำลังดึงข้อมูล...</div> : uniqueOrders.length === 0 ? <div className="text-center py-10 text-gray-500">ไม่พบข้อมูลคำสั่งซื้อ</div> : (
+                                currentData.map((uniqueId: any, index) => {
+                                    const orderInfo = orders.find(o => o['Order ID'] === uniqueId);
+                                    const totalQty = orders.filter(o => o['Order ID'] === uniqueId).reduce((sum, item) => sum + Number(item['Quantity']), 0);
+                                    const qItem = uploadQueue[uniqueId];
+
+                                    return (
+                                        <div key={index} className="grid grid-cols-[1.5fr_3fr_1fr_1.5fr] gap-4 items-center py-4 px-8 border-b border-gray-100 text-gray-600 hover:bg-gray-50 transition">
+                                            <div className="truncate text-gray-900 font-medium">{orderInfo['Order ID']}</div>
+                                            <div className="truncate">{orderInfo['Product Name']}</div>
+                                            <div className="text-center font-bold text-blue-600">{totalQty}</div>
+                                            <div className="text-right flex justify-end">
+                                                {qItem?.status === 'uploading' ? (
+                                                    <div className="w-32 flex flex-col items-end gap-2">
+                                                        <span className="text-xs text-blue-600 font-bold flex items-center gap-1"><UploadCloud className="w-3 h-3 animate-bounce"/>กำลังอัปโหลด...</span>
+                                                        <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden relative"><div className="absolute top-0 bottom-0 bg-blue-500 rounded-full w-1/2 animate-[pulse_1s_ease-in-out_infinite] translate-x-full" /></div>
+                                                    </div>
+                                                ) : qItem?.status === 'error' ? (
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> ล้มเหลว</span>
+                                                        <button onClick={() => uploadToGoogleDriveBackground(qItem.blob, qItem.fileName, uniqueId as string)} className="text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">🔄 ลองใหม่</button>
+                                                    </div>
+                                                ) : orderInfo['IsPacked'] == 0 && qItem?.status !== 'success' ? (
+                                                    <button className="bg-amber-400 hover:bg-amber-500 text-white px-6 py-2 rounded-full font-bold shadow-sm" onClick={() => setSelectedOrderId(orderInfo['Order ID'])}>เริ่มทำงาน</button>
+                                                ) : (
+                                                    <span className="text-emerald-600 font-bold px-4 py-1.5 bg-emerald-50 rounded-full text-sm">แพ็คเสร็จแล้ว ✅</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
     );
 }
 
+// ─────────────────────────────────────────────
+// Sub-component: Shopee Verify Page (UI Updated)
+// ─────────────────────────────────────────────
 function ShopeeVerifyPage({
-    orderData,
-    onBack,
-    videoRef,
+    orderData, onBack, videoRef, isRecording, recordingTime, formatTime, startRecording, stopRecording
 }: {
-    orderData: ShopeeOrder;
-    onBack: () => void;
-    videoRef: React.RefObject<HTMLVideoElement>; // ← เพิ่ม
+    orderData: ShopeeOrder; onBack: () => void; videoRef: React.RefObject<HTMLVideoElement>;
+    isRecording: boolean; recordingTime: number; formatTime: (s: number) => string;
+    startRecording: () => void; stopRecording: (save: boolean) => void;
 }) {
     const [scanCounts, setScanCounts] = useState<Record<string, number>>(() => {
         const init: Record<string, number> = {};
@@ -678,87 +654,26 @@ function ShopeeVerifyPage({
     const [flashKey, setFlashKey] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    useEffect(() => { inputRef.current?.focus(); }, []);
     useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-
-    // ESC ย้อนกลับ
-    useEffect(() => {
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onBack();
-        };
+        const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
     }, [onBack]);
 
     const totalQuantity = orderData.products.reduce((acc, p) => acc + p.quantity, 0);
-
-    const remaining = orderData.products.reduce(
-        (acc, p) => acc + Math.max(0, p.quantity - (p.barcode ? (scanCounts[p.barcode] ?? 0) : 0)), 0
-    );
-
+    const remaining = orderData.products.reduce((acc, p) => acc + Math.max(0, p.quantity - (p.barcode ? (scanCounts[p.barcode] ?? 0) : 0)), 0);
     const packedQuantity = totalQuantity - remaining;
+    const isAllDone = packedQuantity >= totalQuantity;
 
     const handleProductScan = useCallback((barcode: string) => {
         setUnknownBarcode('');
         const target = orderData.products.find(p => p.barcode === barcode);
-        if (!target?.barcode) {
-            setUnknownBarcode(barcode);
-            setFlashKey(k => k + 1);
-            return;
-        }
+        if (!target?.barcode) { setUnknownBarcode(barcode); setFlashKey(k => k + 1); return; }
         const current = scanCounts[target.barcode] ?? 0;
         if (current >= target.quantity) { setFlashKey(k => k + 1); return; }
-
-        const nextCounts = { ...scanCounts, [target.barcode]: current + 1 };
-        setScanCounts(nextCounts);
-
-        const allDone = orderData.products.every(p =>
-            !p.barcode || (nextCounts[p.barcode] ?? 0) >= p.quantity
-        );
-        if (allDone) {
-            import('sweetalert2').then(async (Swal) => {
-                Swal.default.fire({
-                    title: 'กำลังบันทึกข้อมูล...',
-                    text: `กำลังอัปเดตสถานะออเดอร์ ${orderData.order_sn}`,
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    showConfirmButton: false,
-                    didOpen: () => Swal.default.showLoading()
-                });
-                try {
-                    // ยิง HTTP POST ไปที่ Controller (ใช้ Ziggy route() ดึงจากชื่อที่ตั้งใน Laravel)
-                    const response = await axios.post(route('shopee-setpacked'), {
-                        order_sn: orderData.order_sn,
-                        tracking_number: orderData.tracking_number
-                    });
-
-                    if (response.data?.status === 'success' || response.status === 200) {
-                        await Swal.default.fire({
-                            icon: 'success',
-                            title: 'แพ็คครบเรียบร้อย!',
-                            text: 'ระบบได้บันทึกสถานะลง Google Sheet แล้ว',
-                            timer: 2000,
-                            showConfirmButton: false
-                        });
-
-                        // ส่งกลับไปหน้า Parent ตามที่ขอมาใหม่
-                        onBack();
-                    } else {
-                        throw new Error(response.data?.message || 'GAS ตอบกลับมาแบบมี Error');
-                    }
-                } catch (error: any) {
-                    Swal.default.fire({
-                        icon: 'error',
-                        title: 'เกิดข้อผิดพลาด!',
-                        text: error.response?.data?.message || error.message || 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้',
-                        confirmButtonText: 'รับทราบ',
-                        confirmButtonColor: '#ee4d2d'
-                    });
-                }
-            });
-        }
-    }, [orderData, scanCounts, onBack]);
+        setScanCounts({ ...scanCounts, [target.barcode]: current + 1 });
+    }, [orderData, scanCounts]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key !== 'Enter') return;
@@ -769,119 +684,94 @@ function ShopeeVerifyPage({
         setQuery('');
     };
 
-    const cameraWidth = "w-[380px]"; // ปรับขนาดความกว้างของกล้องตรงนี้ได้ตามใจชอบ (adjustable)
+    const handleShopeeSave = async () => {
+        // ให้บันทึกวิดีโอก่อน
+        stopRecording(true);
+        import('sweetalert2').then(async (Swal) => {
+            Swal.default.fire({ title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, showConfirmButton: false, didOpen: () => Swal.default.showLoading() });
+            try {
+                const response = await axios.post(route('shopee-setpacked'), { order_sn: orderData.order_sn, tracking_number: orderData.tracking_number });
+                if (response.data?.status === 'success' || response.status === 200) {
+                    await Swal.default.fire({ icon: 'success', title: 'บันทึกสถานะเรียบร้อย!', timer: 1500, showConfirmButton: false });
+                    onBack();
+                } else throw new Error(response.data?.message || 'GAS Error');
+            } catch (error: any) {
+                Swal.default.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: error.message });
+            }
+        });
+    };
 
     return (
-        <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto p-4">
-            {/* Top Section: Back Button & Status Bar */}
+        <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto p-8">
             <div className="flex items-center gap-4">
-                <button
-                    onClick={onBack}
-                    className="flex items-center justify-center p-2.5 bg-white text-gray-500 border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:text-gray-900 hover:-translate-y-0.5 active:scale-95 transition-all duration-200 ease-in-out"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                </button>
-                <div className="flex-1">
-                    <ScannerStatusBar isFocused={isFocused} mode="verify" />
-                </div>
+                <button onClick={() => { stopRecording(false); onBack(); }} className="p-2.5 bg-white text-gray-500 border border-gray-200 rounded-xl hover:text-gray-900 transition-all"><ArrowLeft className="w-5 h-5" /></button>
+                <div className="flex-1"><ScannerStatusBar isFocused={isFocused} mode="verify" /></div>
             </div>
-
-            {/* Main Content Split Layout: กล้องซ้าย | ข้อมูลและรายการขวา */}
             <div className="flex flex-col lg:flex-row gap-5 items-start w-full">
 
-                {/* ฝั่งซ้าย: Camera Preview Component (Adjustable Width) */}
-                <div className={`flex-shrink-0 bg-black rounded-xl overflow-hidden aspect-[4/3] relative shadow-sm transition-all duration-300 ${cameraWidth}`}>
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full h-full object-cover"
-                    />
-                    {/* Scan crosshair overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-40 h-40 border-2 border-white/70 rounded-lg relative">
-                            {/* Corner brackets */}
-                            <span className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-[#ee4d2d] rounded-tl-sm" />
-                            <span className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-[#ee4d2d] rounded-tr-sm" />
-                            <span className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-[#ee4d2d] rounded-bl-sm" />
-                            <span className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-[#ee4d2d] rounded-br-sm" />
+                {/* ฝั่งซ้าย: กล้อง + วิดีโอ (เหมือน TT เป๊ะ) */}
+                <div className="flex flex-col gap-3 w-full lg:w-[380px] flex-shrink-0">
+                    <div className="bg-black rounded-xl overflow-hidden aspect-[4/3] relative shadow-sm">
+                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-40 h-40 border-2 border-white/70 rounded-lg relative">
+                                <span className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-[#ee4d2d] rounded-tl-sm" />
+                                <span className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-[#ee4d2d] rounded-tr-sm" />
+                                <span className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-[#ee4d2d] rounded-bl-sm" />
+                                <span className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-[#ee4d2d] rounded-br-sm" />
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* ฝั่งขวา: Order Details, Scan Input, and Product List */}
-                <div className="flex-1 w-full min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
-
-                    {/* Order Header Info */}
-                    <div className="flex justify-between items-start w-full">
-                        <div>
-                            <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
-                            <p className="text-xs text-gray-400 mt-0.5 font-mono">Order SN: {orderData.order_sn}</p>
-
-                            {orderData.is_packed ? (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700">
-                                    <Package size={13} /> แพ็คแล้ว
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700">
-                                    <ClockIcon size={13} /> ยังไม่แพ็ค
-                                </span>
-                            )}
-                        </div>
-
-                        {/* สัดส่วนการแพ็ค x/y */}
-                        <div className="text-right flex-shrink-0 text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                            {packedQuantity} / {totalQuantity}
-                        </div>
-                    </div>
-
-                    <div className="h-px bg-gray-200" />
-
-                    {/* Scan Input Section */}
-                    <div>
-                        <label className="text-gray-500 text-xs font-medium block mb-1.5">สแกนสินค้า</label>
-                        <div className="flex gap-2">
-                            <input
-                                ref={inputRef}
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                onFocus={() => setIsFocused(true)}
-                                onBlur={() => setIsFocused(false)}
-                                placeholder="สแกน barcode สินค้า..."
-                                autoComplete="off"
-                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#ee4d2d] focus:ring-2 focus:ring-[#ee4d2d]/10 transition-all placeholder:text-gray-300"
-                            />
-                            <button
-                                onClick={onBack}
-                                className="border border-gray-200 hover:bg-gray-50 text-gray-600 font-medium px-4 py-2 rounded-lg text-sm transition-colors"
-                            >
-                                ยกเลิก
-                            </button>
-                        </div>
-
-                        {unknownBarcode && (
-                            <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 animate-pulse">
-                                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                                ไม่พบ barcode <span className="font-mono font-semibold">{unknownBarcode}</span> ในออเดอร์นี้
+                        {isRecording && (
+                            <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 px-3 py-1.5 rounded-full z-10 text-white text-sm font-bold tracking-wider">
+                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /> REC {formatTime(recordingTime)}
                             </div>
                         )}
                     </div>
-
-                    <div className="h-px bg-gray-200" />
-
-                    {/* Product List Section */}
-                    <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1">
-                        {orderData.products.map(p => (
-                            <ProductVerifyRow
-                                key={p.barcode ?? p.sku}
-                                product={p}
-                                scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0}
-                            />
-                        ))}
+                    <div className="flex gap-2 w-full">
+                        {!isRecording ? (
+                            <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors shadow-sm">
+                                <Video className="w-4 h-4" /> เริ่มบันทึกวิดีโอ
+                            </button>
+                        ) : (
+                            <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors">
+                                <VideoOff className="w-4 h-4" /> ยกเลิกวิดีโอ
+                            </button>
+                        )}
                     </div>
+                </div>
 
+                {/* ฝั่งขวา: รายละเอียด (เหมือน TT เป๊ะ) */}
+                <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
+                    <div className="flex justify-between items-start w-full">
+                        <div>
+                            <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
+                            <p className="text-xs text-gray-400 font-mono mt-0.5">Order SN: {orderData.order_sn}</p>
+                            {isAllDone ? (
+                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700"><Package size={13} /> แพ็คครบแล้ว</span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700"><ClockIcon size={13} /> กำลังแพ็ค</span>
+                            )}
+                        </div>
+                        <div className="text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">{packedQuantity} / {totalQuantity}</div>
+                    </div>
+                    <div className="h-px bg-gray-200" />
+                    <div>
+                        <label className="text-gray-500 text-xs font-medium block mb-1.5">สแกนสินค้าเพื่อเช็ค</label>
+                        <div className="flex gap-2">
+                            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handleKeyDown} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder="สแกน barcode สินค้า..." className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#ee4d2d]" />
+                            <button onClick={() => { stopRecording(false); onBack(); }} className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 font-medium">ยกเลิก</button>
+                        </div>
+                        {unknownBarcode && <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /> ไม่พบ barcode <span className="font-mono">{unknownBarcode}</span></div>}
+                    </div>
+                    <div className="h-px bg-gray-200" />
+                    <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                        {orderData.products.map(p => <ProductVerifyRow key={p.barcode ?? p.sku} product={p} scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0} />)}
+                    </div>
+                    <div className="mt-auto pt-4 flex gap-3">
+                        <button onClick={handleShopeeSave} className="bg-[#ee4d2d] hover:bg-[#d73f21] text-white font-bold py-3 px-6 rounded-xl transition-colors flex-1 shadow-sm text-sm">
+                            บันทึกและอัปโหลดวิดีโอ (Shopee)
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
