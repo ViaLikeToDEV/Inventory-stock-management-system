@@ -168,7 +168,11 @@ export default function Dashboard() {
       {/* Sidebar ด้านซ้าย */}
       <aside className="w-64 bg-[#1e2e40] text-white flex flex-col shadow-lg z-10">
         <div className="h-24 flex items-center justify-center border-b border-[#2a3f54]">
-          <h1 className="text-4xl font-bold tracking-wider">LOGO</h1>
+          <img
+            src="/images/isms-logo.png"
+            alt="ISMS Logo"
+            className="h-full w-full object-contain p-4"
+            />
         </div>
 
         <nav className="flex-1 pt-6">
