@@ -12,7 +12,7 @@ class SummaryController extends Controller
     {
         $responses = Http::pool(fn (Pool $pool) => [
         $pool->as('tiktokshop')->post(config('services.tiktokshop_script_url')),
-        $pool->as('shopee')->post(config('services.shopee_script_url'), ['action' => 'total']),
+        $pool->as('shopee')->post('https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec', ['action' => 'total']),
     ]);
 
     $result = [

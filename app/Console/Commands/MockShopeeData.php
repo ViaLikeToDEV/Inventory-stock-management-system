@@ -22,7 +22,7 @@ class MockShopeeData extends Command
 
     public function handle()
     {
-        $gasUrl = config('services.shopee_script_url');
+        $gasUrl = 'https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec';
 
 
         $total = (int) $this->argument('total');
