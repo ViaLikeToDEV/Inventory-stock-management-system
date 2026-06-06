@@ -493,7 +493,7 @@ export default function Packing() {
                     </div>
 
                     {/* ฝั่งขวา: รายละเอียด, ช่องสแกน, รายการสินค้า */}
-                    <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
+                    <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4 min-w-0">
                         <div className="flex justify-between items-start w-full">
                             <div>
                                 <p className="text-lg font-bold text-gray-900">{trackingNumber}</p>
@@ -753,7 +753,7 @@ function ShopeeVerifyPage({
                 </div>
 
                 {/* ฝั่งขวา: รายละเอียด (เหมือน TT เป๊ะ) */}
-                <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4">
+                <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4 min-w-0">
                     <div className="flex justify-between items-start w-full">
                         <div>
                             <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
