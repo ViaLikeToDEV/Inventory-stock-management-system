@@ -35,7 +35,7 @@ Route::controller(PlaygroundController::class)->group(function () {
     Route::get('/pg1', 'querySingle');
 });
 
-Route::inertia('/focus', 'InputTracker');
+Route::inertia('/focus', 'pg/InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
 
 

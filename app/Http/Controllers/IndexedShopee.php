@@ -11,91 +11,78 @@ class IndexedShopee extends Controller
 {
     public function queryShopeeData(Request $req)
     {
-        $req->validate([
-            'q' => 'required|string'
-        ]);
+        $req->validate(['q' => 'required|string']);
 
         $searchId = trim($req->q);
-        $GAS = config('services.shopee_script_url');
+        $GAS      = config('services.shopee_script_url');
 
-        // --- เริ่ม LOGIC แยก PARAMETER ตาม PREFIX ---
         $searchParameter = [
-            'action' => 'query_single'
+            'action' => 'query_single',
+            str_starts_with(strtoupper($searchId), 'TH')
+                ? 'tracking_number'
+                : 'order_sn' => $searchId,
         ];
 
-        // เช็คว่าขึ้นต้นด้วย TH ไหม (Case-sensitive หรือใส่ strtoupper เผื่อผู้ใช้พิมพ์ th เล็กมา)
-        if (str_starts_with(strtoupper($searchId), 'TH')) {
-            $searchParameter['tracking_number'] = $searchId;
-        } else {
-            $searchParameter['order_sn'] = $searchId;
-        }
-        // --- จบ LOGIC แยก PARAMETER ---
-
+        // ── 1. Transport error ────────────────────────────────────────
         $response = Http::timeout(15)->post($GAS, $searchParameter);
 
         if ($response->failed()) {
-            return response()->json(['message' => 'cannot connect to GAS'], 500);
+            return response()->json([
+                'message' => 'เชื่อมต่อ GAS ไม่ได้',
+                'detail'  => $response->status() . ' ' . $response->body(),
+            ], 502);
         }
 
+        // ── 2. Parse — ป้องกัน GAS คืน HTML / garbage ───────────────
         $resData = $response->object();
 
-        // 1. เช็คกรณีหาไม่เจอ
-        if (isset($resData->message) && $resData->message === 'Query not matched'){
-            return response()->json(['message' => 'หาออเดอร์ไม่เจอนะออเจ้า:P'], 400);
+        if (json_last_error() !== JSON_ERROR_NONE || !isset($resData->success)) {
+            return response()->json([
+                'message' => 'GAS คืนข้อมูลที่อ่านไม่ได้',
+                'raw'     => $response->body(),   // ← เห็นของจริงเลย
+            ], 502);
         }
 
-        // 2. เช็ค Success ด้วย Boolean ตาม JSON
-        if (isset($resData->success) && $resData->success === true) {
-
-            $gasData = $resData->data ?? null;
-            if (!$gasData) {
-                return response()->json(['message' => 'Data payload is missing'], 400);
-            }
-
-            $trackingNumber = $gasData->tracking_number ?? null;
-            $orderSn        = $gasData->order_sn ?? null;
-            $products       = $gasData->product_info_sku ?? [];
-            $isPacked       = $gasData->IsPacked ?? 0;
-
-            // --- DATA ENRICHMENT ---
-            $skus = array_map(function($product) {
-                return $product->sku;
-            }, $products);
-
-            $dbVariants = Variant::with('product')
-                ->whereIn('sku', $skus)
-                ->get()
-                ->keyBy('sku');
-
-            foreach ($products as $product) {
-                $sku = $product->sku;
-                $variantInfo = $dbVariants->get($sku);
-
-                if ($variantInfo) {
-                    $product->variant_name = $variantInfo->variant_name;
-                    $product->product_name = $variantInfo->product?->product_name ?? 'ไม่มีชื่อสินค้าหลัก';
-                    $product->barcode      = $variantInfo->barcode;
-                    $product->is_active    = $variantInfo->is_active;
-                } else {
-                    $product->variant_name = '❌ ไม่พบข้อมูล SKU นี้ในระบบ';
-                    $product->product_name = '❌ ไม่พบข้อมูล';
-                    $product->barcode      = null;
-                    $product->is_active    = false;
-                }
-            }
-            // --- จบ DATA ENRICHMENT ---
-
-            $prepareRes = [
-                'tracking_number' => $trackingNumber,
-                'order_sn'        => $orderSn,
-                'products'        => $products,
-                'is_packed'       => $isPacked
-            ];
-
-            return response()->json($prepareRes);
+        // ── 3. GAS บอก success: false ────────────────────────────────
+        if ($resData->success !== true) {
+            return response()->json([
+                'message' => $resData->error       // ← ส่ง error จาก GAS ตรงๆ
+                        ?? $resData->message
+                        ?? 'GAS ปฏิเสธ request โดยไม่บอกเหตุผล',
+            ], 400);
         }
 
-        return response()->json(['message' => 'Invalid status from GAS'], 400);
+        // ── 4. Success แต่ไม่มี data ─────────────────────────────────
+        $gasData = $resData->data ?? null;
+        if (!$gasData) {
+            return response()->json(['message' => 'GAS ตอบ success แต่ไม่มี data'], 502);
+        }
+
+        // ── 5. Data enrichment ────────────────────────────────────────
+        $products = $gasData->product_info_sku ?? [];
+
+        $skus = array_map(fn($p) => $p->sku, $products);
+
+        $dbVariants = Variant::with('product')
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
+        foreach ($products as $product) {
+            $variant = $dbVariants->get($product->sku);
+
+            $product->variant_name = $variant?->variant_name         ?? '❌ ไม่พบ SKU นี้ในระบบ';
+            $product->product_name = $variant?->product?->product_name ?? '❌ ไม่พบข้อมูล';
+            $product->barcode      = $variant?->barcode               ?? null;
+            $product->is_active    = $variant?->is_active             ?? false;
+        }
+
+        return response()->json([
+            'tracking_number' => $gasData->tracking_number ?? null,
+            'order_sn'        => $gasData->order_sn        ?? null,
+            'products'        => $products,
+            'is_packed'       => $gasData->IsPacked        ?? 0,
+        ]);
     }
 
     public function setpacked(Request $req)
@@ -136,12 +123,22 @@ class IndexedShopee extends Controller
             // แกะ JSON ที่ GAS ส่งกลับมา
             $gasResult = $response->json();
 
-            // 4. ส่งผลลัพธ์กลับไปให้ฝั่ง React จัดการต่อ
-            // เช็ก key 'success' แบบ Boolean ตามที่ GAS พ่นออกมา
+            // 1. เช็กกรณีกดซ้ำ (Already Packed) ก่อนเลย
+            if (isset($gasResult['already_packed']) && $gasResult['already_packed'] === true) {
+                return response()->json([
+                    'status' => 'warning', // เปลี่ยนเป็น warning หรือ error ให้สอดคล้อง
+                    'message' => 'สินค้าชิ้นนี้ถูกแพ็คแล้ว',
+                    'data' => [
+                        'tracking_number' => $gasResult['tracking_number'] ?? $req->tracking_number,
+                        'packed_at' => $gasResult['packed_at'] ?? now()->toIso8601String()
+                    ]
+                ], 400); // 👈 ใช้ 400 Bad Request เพราะเป็นข้อผิดพลาดฝั่ง Client ที่ยิงซ้ำ
+            }
+
+            // 2. ส่งผลลัพธ์กรณีอัปเดตสำเร็จจริงๆ
             if (isset($gasResult['success']) && $gasResult['success'] === true) {
                 return response()->json([
                     'status' => 'success',
-                    // ถ้า GAS ไม่มี message กลับมา ให้ fallback เป็นข้อความ Default
                     'message' => $gasResult['message'] ?? 'อัปเดตสถานะแพ็คสินค้าเรียบร้อย',
                     'data' => [
                         'tracking_number' => $gasResult['tracking_number'] ?? $req->tracking_number,

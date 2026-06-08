@@ -164,7 +164,10 @@ function ShopeePanel({ onOrderFound, saveDirectoryHandle }: ShopeePanelProps) {
                 setQuery('');
             }
         } catch (err: any) {
-            setErrorMsg(err.response?.data?.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง');
+            const msg = err.response?.data?.message || 'เกิดข้อผิดพลาด';
+            const raw = err.response?.data?.raw || '(ไม่มี raw)';
+            const status = err.response?.status || '(ไม่มี status)';
+            setErrorMsg(`[${status}] ${msg} | raw: ${raw}`);
         } finally {
             setIsLoading(false);
         }
@@ -737,6 +740,7 @@ function ShopeeVerifyPage({
         return () => window.removeEventListener('keydown', handleEsc);
     }, [onBack]);
 
+    const IsPack = orderData.is_packed === 1;
     const totalQuantity = orderData.products.reduce((acc, p) => acc + p.quantity, 0);
     const remaining = orderData.products.reduce((acc, p) => acc + Math.max(0, p.quantity - (p.barcode ? (scanCounts[p.barcode] ?? 0) : 0)), 0);
     const packedQuantity = totalQuantity - remaining;
@@ -798,15 +802,42 @@ function ShopeeVerifyPage({
         // ให้บันทึกวิดีโอก่อน
         stopRecording(true);
         import('sweetalert2').then(async (Swal) => {
-            Swal.default.fire({ title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, showConfirmButton: false, didOpen: () => Swal.default.showLoading() });
+            Swal.default.fire({
+                title: 'กำลังบันทึกข้อมูล...',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: () => Swal.default.showLoading()
+            });
+
             try {
-                const response = await axios.post(route('shopee-setpacked'), { order_sn: orderData.order_sn, tracking_number: orderData.tracking_number });
-                if (response.data?.status === 'success' || response.status === 200) {
-                    await Swal.default.fire({ icon: 'success', title: 'บันทึกสถานะเรียบร้อย!', timer: 1500, showConfirmButton: false });
-                    onBack();
-                } else throw new Error(response.data?.message || 'GAS Error');
+                const response = await axios.post(route('shopee-setpacked'), {
+                    order_sn: orderData.order_sn,
+                    tracking_number: orderData.tracking_number
+                });
+
+                // ตรงนี้จะเข้าเฉพาะตระกูล Status HTTP 2xx (เช่น 200 OK คือแพ็คสำเร็จจริง)
+                if (response.data?.status === 'success') {
+                    await Swal.default.fire({
+                        icon: 'success',
+                        title: `${response.data?.message || 'สำเร็จ'}`,
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    onBack(); // แพ็คสำเร็จจริงค่อยย้อนกลับ
+                } else {
+                    throw new Error(response.data?.message || 'เกิดข้อผิดพลาดในการบันทึก');
+                }
             } catch (error: any) {
-                Swal.default.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: error.message });
+                // ดึง message ที่มาจาก Laravel (รวมถึงกรณีติด 400 'สินค้าชิ้นนี้ถูกแพ็คแล้ว')
+                const errorMessage = error.response?.data?.message || error.message || 'ระบบขัดข้อง';
+                const errorStatus = error.response?.data?.status || 'error';
+
+                Swal.default.fire({
+                    icon: errorStatus === 'warning' ? 'warning' : 'error',
+                    title: 'ไม่สามารถบันทึกได้!',
+                    text: errorMessage
+                });
+                // ไม่ใส่ onBack() ตรงนี้ เพื่อให้ User เห็นหน้าจอเดิมและรู้ว่าเกิดอะไรขึ้น
             }
         });
     };
@@ -856,7 +887,7 @@ function ShopeeVerifyPage({
                         <div>
                             <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
                             <p className="text-xs text-gray-400 font-mono mt-0.5">Order SN: {orderData.order_sn}</p>
-                            {isAllDone ? (
+                            {IsPack ? (
                                 <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700"><Package size={13} /> แพ็คครบแล้ว</span>
                             ) : (
                                 <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700"><ClockIcon size={13} /> กำลังแพ็ค</span>

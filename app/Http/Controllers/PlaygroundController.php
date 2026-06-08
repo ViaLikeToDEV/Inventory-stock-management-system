@@ -14,7 +14,7 @@ class PlaygroundController extends Controller
 
 
     public function page(){
-        return inertia::render('pg');
+        return inertia::render('pg/pg');
     }
 
     public function SendThemAndSendBack(){
