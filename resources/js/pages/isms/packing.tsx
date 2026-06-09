@@ -950,28 +950,72 @@ function ShopeeVerifyPage({
                             <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
                             <p className="text-xs text-gray-400 font-mono mt-0.5">Order SN: {orderData.order_sn}</p>
                             {IsPack ? (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700"><Package size={13} /> แพ็คครบแล้ว</span>
+                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700">
+                                    <Package size={13} /> แพ็คครบแล้ว
+                                </span>
                             ) : (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700"><ClockIcon size={13} /> กำลังแพ็ค</span>
+                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700">
+                                    <ClockIcon size={13} /> กำลังแพ็ค
+                                </span>
                             )}
                         </div>
-                        <div className="text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">{packedQuantity} / {totalQuantity}</div>
+                        <div className="text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                            {packedQuantity} / {totalQuantity}
+                        </div>
                     </div>
+
                     <div className="h-px bg-gray-200" />
-                    <div>
+
+                    {/* โซนที่ 1: ล็อคการสแกน */}
+                    <div className={IsPack ? "opacity-60" : ""}>
                         <label className="text-gray-500 text-xs font-medium block mb-1.5">สแกนสินค้าเพื่อเช็ค</label>
                         <div className="flex gap-2">
-                            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handleKeyDown} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder="สแกน barcode สินค้า..." className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#ee4d2d]" />
-                            <button onClick={() => { stopRecording(false); onBack(); }} className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 font-medium">ยกเลิก</button>
+                            <input
+                                ref={inputRef}
+                                value={query}
+                                onChange={e => setQuery(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                onFocus={() => setIsFocused(true)}
+                                onBlur={() => setIsFocused(false)}
+                                // disabled={IsPack} // <-- ตัวแปรสำคัญ: ปิดการพิมพ์/สแกนเมื่อแพ็คครบ
+                                placeholder={"สแกน barcode สินค้า..."}
+                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#ee4d2d] disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            />
+                            {/* ปุ่มยกเลิก ไม่ควรโดนล็อค ให้ User กดถอยกลับได้เสมอ */}
+                            <button
+                                onClick={() => { stopRecording(false); onBack(); }}
+                                className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 font-medium bg-white"
+                            >
+                                ยกเลิก
+                            </button>
                         </div>
-                        {unknownBarcode && <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /> ไม่พบ barcode <span className="font-mono">{unknownBarcode}</span></div>}
+                        {unknownBarcode && (
+                            <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse">
+                                <AlertCircle className="w-3.5 h-3.5" /> ไม่พบ barcode <span className="font-mono">{unknownBarcode}</span>
+                            </div>
+                        )}
                     </div>
+
                     <div className="h-px bg-gray-200" />
-                    <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
-                        {orderData.products.map(p => <ProductVerifyRow key={p.barcode ?? p.sku} product={p} scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0} />)}
+
+                    {/* โซนที่ 2: แสดงผล List สินค้า (ถ้าอยากให้ดูจางๆ ทื่อๆ ตอนแพ็คเสร็จ ก็ใส่ Class เข้าไป) */}
+                    <div className={`flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1 transition-all ${IsPack ? 'opacity-70 pointer-events-none' : ''}`}>
+                        {orderData.products.map(p => (
+                            <ProductVerifyRow
+                                key={p.barcode ?? p.sku}
+                                product={p}
+                                scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0}
+                            />
+                        ))}
                     </div>
+
+                    {/* โซนที่ 3: ปุ่มบันทึก (ปล่อยให้กดได้ หรือจะทำ Animation เรียกร้องความสนใจตอน IsPack=true ก็ได้) */}
                     <div className="mt-auto pt-4 flex gap-3">
-                        <button onClick={handleShopeeSave} className="bg-[#ee4d2d] hover:bg-[#d73f21] text-white font-bold py-3 px-6 rounded-xl transition-colors flex-1 shadow-sm text-sm">
+                        <button
+                            onClick={handleShopeeSave}
+                            // ถ้าเป็นสถานะ View Only ค่อยใส่ disabled หรือ pointer-events-none ตรงนี้
+                            className={`bg-[#ee4d2d] hover:bg-[#d73f21] text-white font-bold py-3 px-6 rounded-xl transition-all flex-1 shadow-sm text-sm ${IsPack ? 'ring-4 ring-red-100' : ''}`}
+                        >
                             บันทึกและอัปโหลดวิดีโอ (Shopee)
                         </button>
                     </div>
