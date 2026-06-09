@@ -266,6 +266,8 @@ export default function Packing() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+    const [selectedDevice, setSelectedDevice] = useState('');
 
     useEffect(() => {
         fetch('/get-packing-orders')
@@ -282,22 +284,61 @@ export default function Packing() {
     useEffect(() => {
         const startCamera = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                let currentDeviceId = selectedDevice;
+
+                // 1. ถ้ายังไม่มีการเลือกกล้อง ให้ดึงลิสต์กล้องมาเซ็ตก่อน
+                if (!currentDeviceId) {
+                    const allDevices = await navigator.mediaDevices.enumerateDevices();
+                    const cameraLists = allDevices.filter((d) => d.kind === 'videoinput');
+
+                    setDevices(cameraLists);
+
+                    if (cameraLists.length > 0) {
+                        currentDeviceId = cameraLists[0].deviceId;
+                        setSelectedDevice(currentDeviceId);
+                    } else {
+                        throw new Error('ไม่พบกล้องในอุปกรณ์นี้');
+                    }
+                }
+
+                // 2. เคลียร์สตรีมเก่าทิ้งก่อนเปิดสตรีมใหม่ (สำคัญมากเวลาสลับกล้อง)
+                if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(t => t.stop());
+                }
+
+                // 3. ใช้ deviceId ในการจับกล้อง แทนการฟิกซ์ facingMode
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: currentDeviceId ? { exact: currentDeviceId } : undefined },
+                    audio: true
+                });
+
                 streamRef.current = stream;
                 if (videoRef.current) videoRef.current.srcObject = stream;
-            } catch (err) { console.error('ไม่สามารถเปิดกล้องได้:', err); }
+
+            } catch (err) {
+                console.error('ไม่สามารถเปิดกล้องได้:', err);
+            }
         };
+
         const stopCamera = () => {
-            stopRecording(false);
+            // เช็คก่อนว่า stopRecording มีการเรียกใช้จริงๆ หรือ error ไหม
+            if (typeof stopRecording === 'function') stopRecording(false);
             streamRef.current?.getTracks().forEach(t => t.stop());
             streamRef.current = null;
         };
 
-        if (selectedOrderId || shopeeOrder) startCamera();
-        else stopCamera();
+        // เงื่อนไขในการเริ่มหรือหยุดกล้อง
+        if (selectedOrderId || shopeeOrder) {
+            startCamera();
+        } else {
+            stopCamera();
+        }
 
+        // Cleanup function
         return () => stopCamera();
-    }, [selectedOrderId, shopeeOrder]);
+
+    // 4. เพิ่ม selectedDevice เข้าไปใน Dependency ด้วย กล้องจะได้รีเฟรชเวลาสลับกล้อง
+    }, [selectedOrderId, shopeeOrder, selectedDevice]);
 
     useEffect(() => {
         if (selectedOrderId) {
@@ -483,6 +524,9 @@ export default function Packing() {
                     formatTime={formatTime}
                     startRecording={startRecording}
                     stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
+                    devices={devices}
+                    selectedDevice={selectedDevice}
+                    setSelectedDevice={(id) => setSelectedDevice(id)}
                 />
             </div>
         );
@@ -716,11 +760,12 @@ export default function Packing() {
 // Sub-component: Shopee Verify Page (UI Updated)
 // ─────────────────────────────────────────────
 function ShopeeVerifyPage({
-    orderData, onBack, videoRef, isRecording, recordingTime, formatTime, startRecording, stopRecording
+    orderData, onBack, videoRef, isRecording, recordingTime, formatTime, startRecording, stopRecording, devices, selectedDevice, setSelectedDevice
 }: {
     orderData: ShopeeOrder; onBack: () => void; videoRef: React.RefObject<HTMLVideoElement>;
     isRecording: boolean; recordingTime: number; formatTime: (s: number) => string;
     startRecording: () => void; stopRecording: (save: boolean) => void;
+    devices: MediaDeviceInfo[]; selectedDevice: string;setSelectedDevice: (deviceId: string) => void;
 }) {
     const [scanCounts, setScanCounts] = useState<Record<string, number>>(() => {
         const init: Record<string, number> = {};
@@ -868,6 +913,23 @@ function ShopeeVerifyPage({
                             </div>
                         )}
                     </div>
+
+                    {devices.length > 0 && (
+                                <div className="flex items-center gap-3">
+                                    <select
+                                        value={selectedDevice}
+                                        onChange={(e) => setSelectedDevice(e.target.value)}
+                                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none w-full"
+                                    >
+                                        {devices.map((device, index) => (
+                                            <option key={device.deviceId} value={device.deviceId}>
+                                                {device.label || `กล้อง ${index + 1}`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
                     <div className="flex gap-2 w-full">
                         {!isRecording ? (
                             <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors shadow-sm">

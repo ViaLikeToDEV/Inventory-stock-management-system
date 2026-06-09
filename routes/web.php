@@ -28,7 +28,7 @@ Route::get('/products/check', [SkuFetchTestController::class, 'index']);
 Route::post('/api/products/check', [SkuFetchTestController::class, 'check']);
 
 Route::controller(PlaygroundController::class)->group(function () {
-    Route::get('/pg', 'pgfunc');
+    Route::get('/pg', 'page');
     Route::get('/pgf', 'getDailySummary');
     Route::get('/pgpack', 'pack');
     Route::get('/pgmonth', 'queryTrackings');
