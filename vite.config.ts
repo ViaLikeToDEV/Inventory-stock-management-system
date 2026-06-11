@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
+import path from 'path'; // <--- อิมพอร์ต path เข้ามาด้วย
 
 export default defineConfig({
     server: {
@@ -40,4 +41,9 @@ export default defineConfig({
             formVariants: true,
         }),
     ],
+    resolve: {
+        alias: {
+            '@components': path.resolve(__dirname, 'resources/js/pages/isms/components'),
+        }
+    },
 });
