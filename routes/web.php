@@ -33,4 +33,9 @@ Route::get('/shopeeq', [PlaygroundController::class, 'queryShopeeData']);
 Route::inertia('/focus', 'InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
 
+/////////////// admin////////////
+Route::get('/admin-dashboard', function () {
+    return Inertia::render('isms_admin/adminDashboard');
+});
+
 
