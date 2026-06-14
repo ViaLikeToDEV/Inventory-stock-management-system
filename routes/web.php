@@ -18,7 +18,7 @@ Route::get('/', function () {
 });
 
 Route::inertia('/item-scan', 'item-scan');
-Route::inertia('/input', 'input');
+Route::inertia('/input', 'pg/input');
 // Route::inertia('/barcode', 'barcods');
 
 Route::post('/upload-orders', [OrderUploadController::class, 'upload']);

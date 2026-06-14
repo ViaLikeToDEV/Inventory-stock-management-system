@@ -109,10 +109,9 @@
         "skipLibCheck": true /* Skip type checking all .d.ts files. */,
         "baseUrl": ".",
         "paths": {
-            "@/*": ["./resources/js/*"],
             "@components/*": ["./resources/js/pages/isms/components/*"]
-        }
-        "jsx": "react-jsx"
+        },
+        "jsx": "react-jsx",
     },
     "include": [
         "resources/js/**/*.ts",

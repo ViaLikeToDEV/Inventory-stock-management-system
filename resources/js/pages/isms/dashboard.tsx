@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Home, ClipboardList, Package, Loader2 } from 'lucide-react';
+import { Home, ClipboardList, Package, Loader2, FileSearchCorner } from 'lucide-react';
 import Swal from 'sweetalert2';
 import Packing from './packing';
+import UniversalPack from '@components/universalpack';
 
 export function DashStat() {
   // สร้าง State มารับข้อมูลที่ดึงมา
@@ -212,6 +213,19 @@ export default function Dashboard() {
                 Packing
               </button>
             </li>
+            <li>
+              {/* 🟢 4. ปุ่ม Packing: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'packing' */}
+              <button
+                onClick={() => setActiveMenu('universal_pack')}
+                className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+                  activeMenu === 'universal_pack' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                }`}
+              >
+                <FileSearchCorner className="w-5 h-5 mr-4" />
+                UniversalPack
+              </button>
+            </li>
+
           </ul>
         </nav>
       </aside>
@@ -310,6 +324,16 @@ export default function Dashboard() {
 
               {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
               <Packing />
+
+            </div>
+          )}
+
+          {activeMenu === 'universal_pack' && (
+            <div className="p-8 bg-[#eef1f8] min-h-full">
+              {/* <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2> */}
+
+              {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
+              <UniversalPack />
 
             </div>
           )}
