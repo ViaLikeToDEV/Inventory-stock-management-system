@@ -87,7 +87,7 @@ class OrderUploadController extends Controller
                     if (!empty($row[0])) {
                         $rawData = $row[2] ?? ''; // ใช้ ?? ดักเผื่อ index 2 ไม่มีอยู่จริง จะได้ไม่ขึ้น Error
 
-                        // ❌ เปลี่ยนจาก return 400 เป็น continue ข้ามไป เพื่อไม่ให้ตายกลางทาง
+                        // เปลี่ยนจาก return 400 เป็น continue ข้ามไป เพื่อไม่ให้ตายกลางทาง
                         if (empty($rawData)) {
                             continue;
                         }
@@ -113,9 +113,10 @@ class OrderUploadController extends Controller
                         // เพิ่มเข้ากองกลางเฉพาะตอนที่มีการ parse item สำเร็จเท่านั้น
                         if (!empty($parsedItems)) {
                             $previewData[] = [
-                                'tracking_number' => (string) $row[0], // Column A (Index 0)
-                                'order_sn'        => (string) $row[1], // Column B (Index 1)
-                                'product_info'    => json_encode($parsedItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                                'tracking_number'  => (string) $row[0], // Column A (Index 0)
+                                'order_sn'         => (string) $row[1], // Column B (Index 1)
+                                // ✅ FIX: เปลี่ยนจาก product_info เป็น product_info_sku ให้ตรงกับโค้ดตัวอย่างที่ใช้ได้
+                                'product_info_sku' => json_encode($parsedItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                             ];
                         }
                     }
@@ -126,37 +127,37 @@ class OrderUploadController extends Controller
                     return response()->json(['error' => 'No valid order data found in sheet'], 400);
                 }
 
-                // จัดโครงสร้างให้ตรงกับก้อนที่ Google Apps Script เวอร์ชันแก้ไขรอรับอยู่
+                // ✅ FIX: ปรับโครงสร้าง Payload ให้ตรงกับรูปแบบที่ GAS คาดหวัง (อิงจากตัวอย่างข้อ 1)
                 $searchParameter = [
-                    "action" => 'import',
-                    "data"   => $previewData,
+                    "action" => 'insert',      // เปลี่ยนจาก 'import' เป็น 'insert' ให้ตรงกับสเปคที่ใช้งานได้
+                    "rows"   => $previewData,  // เปลี่ยนคีย์จาก 'data' เป็น 'rows' เพื่อให้ GAS วนลูปอ่านข้อมูลถูกตัว
                 ];
 
-                $GAS = 'https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec';
+                $GAS = config('services.shopee_script_url');
 
-                // ยิงไปหา GAS ด้วย Timeout 15 วินาที
-                $GASres = Http::timeout(15)->post($GAS, $searchParameter);
+                // ยิงไปหา GAS ด้วย Timeout 30 วินาที (จากเดิม 15s เผื่อข้อมูลเยอะเหมือนโค้ดชุดแรกที่ดักไว้สูง)
+                $GASres = Http::timeout(30)->post($GAS, $searchParameter);
 
                 if ($GASres->failed()) {
                     return response()->json([
                         'error'   => 'Failed to connect to Google Sheets API',
                         'status'  => $GASres->status(),
-                        'details' => $GASres->body() // ดึงคำด่าจาก GAS ออกมาดูว่าทำไมไม่ผ่าน
+                        'details' => $GASres->body()
                     ], 500);
                 }
 
-                // 3. ส่งข้อมูลกลับไปให้ React แสดงผลแบบสวยๆ
+                // 3. ส่งข้อมูลกลับไปให้ React แสดงผล
                 return response()->json([
                     'preview_data' => $previewData,
-                    'sheet_result' => $GASres->json(), // ตัวนี้จะไม่ null แล้ว เพราะฝั่ง GAS บังคับพ่น JSON เสมอ
+                    'sheet_result' => $GASres->json(),
                     'sheetType'    => $sheetType
                 ]);
 
-        } else {
-            return response()->json([
-                'message' => 'Type incorrect'
-            ], 400); // ใส่ HTTP Status 400 ให้หน้าบ้านแยกแยะได้ด้วยว่าส่งประเภทมาผิด
-        }
+            } else {
+                return response()->json([
+                    'message' => 'Type incorrect'
+                ], 400);
+            }
 
         }catch(\Exception $e){
             return response()->json([

@@ -60,6 +60,7 @@ class ProductSeeder extends Seeder
                     'product_id'   => $row[1],
                     'variant_name' => $row[2],
                     'barcode'      => $row[3] ?? null,
+                    'bundle'       => $row[5] ?? null,
                     'is_active' => $row[4] ?? true,
                 ]
             );

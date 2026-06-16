@@ -101,8 +101,11 @@ class IndexedShopee extends Controller
 
         // ── 5. Data enrichment ────────────────────────────────────────
         $products = $gasData->product_info_sku ?? [];
+        // dd($products);
 
         $skus = array_map(fn($p) => $p->sku, $products);
+
+        // dd($skus);
 
         $dbVariants = Variant::with('product')
             ->whereIn('sku', $skus)
@@ -111,11 +114,45 @@ class IndexedShopee extends Controller
 
         foreach ($products as $product) {
             $variant = $dbVariants->get($product->sku);
+            $bundle = $variant?->bundle ?? null;
 
-            $product->variant_name = $variant?->variant_name         ?? '❌ ไม่พบ SKU นี้ในระบบ';
-            $product->product_name = $variant?->product?->product_name ?? '❌ ไม่พบข้อมูล';
-            $product->barcode      = $variant?->barcode               ?? null;
-            $product->is_active    = $variant?->is_active             ?? false;
+            if (isset($bundle))
+            {
+                // แปลง JSON string เป็น Array ของ Objects
+                $bundle_data = json_decode($bundle);
+
+                // จากข้อ 2 ข้อมูลมันครอบด้วย [ ] (Array) แปลว่าต้องเอาตัวแรกมาใช้ [0]
+                // dd($bundle_data[0] ?? 'ไม่มีข้อมูลใน Index 0 หรือแปลง JSON ไม่สำเร็จ');
+                // dd($bundle_data[1]);
+                // $bundle_object = $bundle_data[0] ?? null;
+                foreach ($bundle_data as $index_value => $bundle_obj){
+                if ($bundle_obj && ($bundle_obj->type === 'origin_sku')) {
+                    $origin_sku = Variant::where('sku', $bundle_obj->sku)->first();
+                    // $origin_sku = $dbVariantsBundle->get($bundle_obj->sku);
+                    // dd($origin_sku);
+
+                    $product->variant_name = $bundle_obj?->display_variant ?? $origin_sku?->variant_name ?? '❌ ไม่พบ Origin_SKU นี้ในระบบ';
+                    $product->product_name = $bundle_obj?->display_product_name ?? $origin_sku?->product?->product_name ?? '❌ ไม่พบข้อมูล';
+                    $product->barcode      = $origin_sku?->barcode               ?? null;
+                    $product->is_active    = $origin_sku?->is_active             ?? false;
+                    $product->quantity     = isset($bundle_obj?->quantity) ? $product->quantity * $bundle_obj->quantity : 0;
+                } elseif ($bundle_obj && ($bundle_obj->type === 'dummy_item')){
+                $newProduct = new \stdClass();
+                    $newProduct->sku          = "{$product->sku}_{$index_value}";
+                    $newProduct->variant_name = $bundle_obj?->display_variant ?? '❌ ไม่พบ dummy_item_variant ในระบบ';
+                    $newProduct->product_name = $bundle_obj?->display_product_name ?? '❌ ไม่พบข้อมูล';
+                    $newProduct->barcode      = $bundle_obj?->barcode               ?? null;
+                    $newProduct->is_active    = true;
+                    $newProduct->quantity     = isset($bundle_obj?->quantity) ? $product->quantity * $bundle_obj->quantity : 0;
+                $products[] = $newProduct;
+                }
+            }
+            } else {
+                $product->variant_name = $variant?->variant_name         ?? '❌ ไม่พบ SKU นี้ในระบบ';
+                $product->product_name = $variant?->product?->product_name ?? '❌ ไม่พบข้อมูล';
+                $product->barcode      = $variant?->barcode               ?? null;
+                $product->is_active    = $variant?->is_active             ?? false;
+            }
         }
 
         return response()->json([

@@ -41,6 +41,7 @@ return new class extends Migration
             $table->integer('product_id');
             $table->string('variant_name');
             $table->string('barcode')->nullable();
+            $table->string('bundle')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 

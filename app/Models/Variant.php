@@ -20,6 +20,7 @@ class Variant extends Model
         'variant_name',
         'barcode',
         'is_active',
+        "bundle",
     ];
 
     public function product(): \Illuminate\Database\Eloquent\Relations\BelongsTo

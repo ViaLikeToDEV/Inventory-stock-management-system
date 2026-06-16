@@ -296,7 +296,7 @@ export default function Dashboard() {
                             Swal.fire({
                                 icon: "success",
                                 title: `${sheetType || 'unknow'}`,
-                                text: `\n เพิ่มแล้ว: ${data.sheet_result?.added || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.duplicates_skipped || 0}`
+                                text: `\n เพิ่มแล้ว: ${data.sheet_result?.inserted || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.skipped || 0}`
                             });
 
                     } catch(err: any) {
