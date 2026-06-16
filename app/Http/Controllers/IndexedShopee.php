@@ -115,6 +115,7 @@ class IndexedShopee extends Controller
         foreach ($products as $product) {
             $variant = $dbVariants->get($product->sku);
             $bundle = $variant?->bundle ?? null;
+            $actual_product_quantity = $product->quantity ?? null;
 
             if (isset($bundle))
             {
@@ -143,7 +144,7 @@ class IndexedShopee extends Controller
                     $newProduct->product_name = $bundle_obj?->display_product_name ?? '❌ ไม่พบข้อมูล';
                     $newProduct->barcode      = $bundle_obj?->barcode               ?? null;
                     $newProduct->is_active    = true;
-                    $newProduct->quantity     = isset($bundle_obj?->quantity) ? $product->quantity * $bundle_obj->quantity : 0;
+                    $newProduct->quantity     = isset($bundle_obj?->quantity) && isset($actual_product_quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
                 $products[] = $newProduct;
                 }
             }
