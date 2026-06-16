@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Models\SystemSetting;
 use App\Models\Variant;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-
+use Illuminate\Support\Facades\Log;
 
 class IndexedShopee extends Controller
 {
@@ -15,6 +17,7 @@ class IndexedShopee extends Controller
 
         $searchId = trim($req->q);
         $GAS      = config('services.shopee_script_url');
+        $GASvproductLine = config('services.products_script_url');
 
         $searchParameter = [
             'action' => 'query_single',
@@ -24,7 +27,45 @@ class IndexedShopee extends Controller
         ];
 
         // ── 1. Transport error ────────────────────────────────────────
-        $response = Http::timeout(15)->post($GAS, $searchParameter);
+
+        $responses = Http::pool(fn (Pool $pool) => [
+            $pool->as('orderSearchRes')->post($GAS, $searchParameter),
+            $pool->as('versionCheckerRes')->get($GASvproductLine, ['action' => 'version']),
+        ]);
+
+        $response = $responses['orderSearchRes'];
+        $versionResponse = $responses['versionCheckerRes'];
+
+        if ($versionResponse->successful()) {
+            // ตัดช่องว่าง/ขึ้นบรรทัดใหม่ที่อาจติดมาจาก GAS Text Output ออกให้หมด
+            $currentGasVersion = trim($versionResponse->body());
+
+            // ดึงค่า String เวอร์ชันล่าสุดจาก SQLite
+            $versionSetting = SystemSetting::where('key', 'shopee_gas_version')->first();
+
+            if ($versionSetting) {
+                // 🔍 เทียบค่า String กันตรงๆ เสมอๆ
+                if ($versionSetting->value !== $currentGasVersion) {
+
+                Log::info("🚨 Version Changed! Local SQLite was [{$versionSetting->value}], but GAS reported [{$currentGasVersion}]");
+
+                return response()->json([
+                    'status' => 'version_changed',
+                    'message' => 'ระบบต้องอัพเดตฐานข้อมูล!',
+                ], 200);
+
+                    $versionSetting->update([
+                        'value' => $currentGasVersion
+                    ]);
+                }
+            } else {
+                // เคสฉุกเฉินเผื่อในตารางไม่มีคีย์นี้ (แต่ตอน migration ใส่ไปแล้ว ไม่น่าเจอ)
+                SystemSetting::create(['key' => 'gas_version', 'value' => $currentGasVersion]);
+            }
+        } else {
+            Log::error("❌ Cannot fetch version from GAS API.");
+        }
+
 
         if ($response->failed()) {
             return response()->json([

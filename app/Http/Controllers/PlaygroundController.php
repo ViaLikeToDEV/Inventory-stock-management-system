@@ -20,15 +20,28 @@ class PlaygroundController extends Controller
     public function SendThemAndSendBack(){
         $someobj = [
             "message" => "hello world",
+            "action" => "sendmeback",
             "nested1" => [
                 "item1" => "this is text from item1",
                 "item2" => "this is text from item2",
-            ]
+            ],
+            "nested2" => ['item1','item2','item3']
         ];
 
-        $res = Http::post('https://script.google.com/macros/s/AKfycbzL9eu8Z-JmerV7k8j2zqr2H97imIj46xNIr1YchAESkv9LkZqQS_LTMEc_0m8umaTf/exec', $someobj);
+        $res = $res = Http::asJson()->post('https://script.google.com/macros/s/AKfycbxhnDLikh_kWZzUfDWSiApDBlww5wbyNj-SYM8r0q9SzvUEDnc7qtpGD-pETCok37kOKg/exec', $someobj);
 
         return $res;
+    }
+
+    public function bundlescript(){
+        $searchParameter = [
+            'action' => 'productsinfolists'
+        ];
+
+        $GAS = config('services.products_script_url');
+
+        $response = Http::timeout(15)->post($GAS, $searchParameter);
+        $data = $response->object();
     }
 
     public function pgfunc(){

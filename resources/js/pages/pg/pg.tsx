@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
 
-export default function StaleCounter() {
+export default function App() {
   const [count, setCount] = useState(0);
 
-  setCount(count + 1);
-  console.log(count);
+  console.log('1. Component Start');
+
+  const doubled = count * 2;
+
+  console.log('2. Calculate');
+
+  useEffect(() => {
+    console.log('4. useEffect');
+  }, [count]);
+
+  useEffect(() => {
+  console.log("รันทุกรอบ! State ไหนเปลี่ยน พร็อพไหนเปลี่ยน ฉันรันหมด!");
+}, []); // 👈 ไม่มีคิวบิกต่อท้ายเลย
+  console.log('3. Before Return');
 
   return (
-    <div>
-      <h1>Count: {count}</h1>
-      <button onClick={() => setCount(count + 5)}>บวกสาดๆ (+5)</button>
-    </div>
+    <button onClick={() => setCount(c => c + 1)}>
+      {doubled}
+    </button>
   );
 }

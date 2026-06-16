@@ -24,6 +24,11 @@ interface ShopeeOrder {
     products: ShopeeProduct[];
 }
 
+interface VersionChangedResponse {
+    status: 'version_changed';
+    message: string;
+}
+
 type ShopeeMode = 'search' | 'skunotfound';
 
 export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeePanelProps) {
@@ -50,14 +55,18 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
 
     useEffect(() => {
         // inputRef.current?.focus();
+        const isGlobalKeyDownException = () => {
+            const isExc = !saveDirectoryHandleRef.current || (document.activeElement?.tagName === 'INPUT' && document.activeElement.id === 'search-box');
+
+            if (isExc) console.log('global input except detected');
+            return isExc;
+        };
 
         const handleGlobalKeyDown = (e: KeyboardEvent) => {
         // ถ้าพนักงานกำลังพิมพ์ใน Search Box ตรงๆ ให้ปล่อยให้เขาพิมพ์ไป ไม่ต้องแย่งข้อมูล
-        if (!saveDirectoryHandleRef.current) {return;}
-        if (document.activeElement?.tagName === 'INPUT' && document.activeElement.id === 'search-box') {
+        if (isGlobalKeyDownException()) {
             return;
         }
-
 
         const currentTime = Date.now();
 
@@ -81,7 +90,11 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
         };
 
         const handleWindowBlur = () => setIsFocused(false);
-        const handleWindowFocus = () => setIsFocused(true);
+        const handleWindowFocus = () => {
+            if (saveDirectoryHandleRef.current){
+            setIsFocused(true)
+            }
+        };
 
         window.addEventListener('keydown', handleGlobalKeyDown);
         window.addEventListener('blur', handleWindowBlur);
@@ -159,8 +172,35 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
         setIsLoading(true);
         setErrorMsg('');
         try {
-            const response = await axios.post<ShopeeOrder>(route('shopee-query'), { q });
+            // เปลี่ยน Generic เป็น any หรือ ShopeeOrder | VersionChangedResponse เพื่อให้เช็ก status ได้
+            const response = await axios.post<any>(route('shopee-query'), { q });
             const data = response.data;
+
+            // 🔄 ✨ ตรวจพบเวอร์ชันเปลี่ยน รันซิงค์ออโต้ทันที!
+            if (data && data.status === 'version_changed') {
+                import('sweetalert2').then((Swal) => {
+
+                Swal.default.fire({
+                    title: 'แอดมินอัพเดตฐานข้อมูลใหม่!',
+                    text: `${data.message}` || 'null',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'อัปเดตฐานข้อมูล'
+                }).then((result) => {
+                    if (result.isConfirmed) handleSync();
+                    setInvalidProducts([]);
+                    setShopeeMode('search');
+                });
+            });
+                // 1. เรียกฟังก์ชันซิงค์ข้อมูล และรอจนกว่าจะซิงค์เสร็จ (await)
+                // await handleSync();
+
+                // // 2. ซิงค์เสร็จแล้ว บังคับยิงค้นหาใหม่อีกรอบออโต้ เพื่อดึงข้อมูลออเดอร์จริงมาแสดง
+                // await handleSearch(q);
+                return; // จบการทำงานของรอบนี้ เพราะรอบใหม่รันแทนแล้ว
+            }
+
+            // --- ด้านล่างนี้คือ Logic เดิมของคุณ ทำงานตามปกติ ---
             const invalid = data.products.filter(p => !p.barcode);
             if (invalid.length !== 0) {
                 setInvalidProducts(invalid);
@@ -177,7 +217,7 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
         } finally {
             setIsLoading(false);
         }
-    }, [query]);
+    }, [query, handleSync]); // ⚠️ อย่าลืมเติม handleSync เข้าไปใน dependency array ของ useCallback ด้วยล่ะ!
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') { e.preventDefault(); handleSearch(); }
@@ -220,7 +260,7 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
                     id='search-box'
                 />
                 <button
-                    onClick={handleSearch}
+                    onClick={() => handleSearch()}
                     disabled={isSearchDisabled || !query.trim()} // ล็อกปุ่มกด
                     className="bg-[#ee4d2d] hover:bg-[#d73f21] disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 flex-shrink-0 disabled:cursor-not-allowed"
                 >
