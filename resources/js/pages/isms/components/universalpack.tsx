@@ -235,24 +235,44 @@ export default function Packing() {
     };
 
     // ─── Shopee Verify View (UI เหมือน TikTok) ───
+    // ─── Shopee Verify View (ปรับเป็น HUD Window ซ้อนทับจอหลัก) ───
     if (shopeeOrder) {
-        return (
-            <div className="bg-[#eef1f8] min-h-full">
-                <ShopeeVerifyPage
-                    orderData={shopeeOrder}
-                    onBack={() => setShopeeOrder(null)}
-                    videoRef={videoRef}
-                    isRecording={isRecording}
-                    recordingTime={recordingTime}
-                    formatTime={formatTime}
-                    startRecording={startRecording}
-                    stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
-                    devices={devices}
-                    selectedDevice={selectedDevice}
-                    setSelectedDevice={(id) => setSelectedDevice(id)}
-                />
+    return (
+        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in">
+        <div className="bg-[#eef1f8] w-full h-full max-w-7xl rounded-2xl border border-slate-200/80 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col">
+            {/* หัวหน้าต่างแบบ HUD style */}
+            <div className="bg-white px-6 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Shopee Verification Window</span>
             </div>
-        );
+            <button
+                onClick={() => { stopRecording(false, shopeeOrder.order_sn); setShopeeOrder(null); }}
+                className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors font-sans px-2 py-1 rounded-md hover:bg-gray-100"
+            >
+                ปิดหน้าต่าง (Esc)
+            </button>
+            </div>
+
+            {/* เนื้อหาภายในหน้าต่างหน้าสแกน */}
+            <div className="flex-1 overflow-y-auto">
+            <ShopeeVerifyPage
+                orderData={shopeeOrder}
+                onBack={() => setShopeeOrder(null)}
+                videoRef={videoRef}
+                isRecording={isRecording}
+                recordingTime={recordingTime}
+                formatTime={formatTime}
+                startRecording={startRecording}
+                stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
+                devices={devices}
+                selectedDevice={selectedDevice}
+                setSelectedDevice={(id) => setSelectedDevice(id)}
+            />
+            </div>
+        </div>
+        </div>
+    );
     }
 
     const FolderIcon = () => (

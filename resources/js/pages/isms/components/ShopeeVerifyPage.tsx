@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, AlertCircle, Package, Clock as ClockIcon, Video, VideoOff } from 'lucide-react';
-import { ScannerStatusBar } from './ScannerStatusBar';
-import { ProductVerifyRow } from './ProductVerifyRow';
+import { ArrowLeft, AlertCircle, Package, Clock as ClockIcon, Video, VideoOff, MoveHorizontal } from 'lucide-react';
+import { ScannerStatusBar } from '@components/ScannerStatusBar';
+import { ProductVerifyRow } from '@components/ProductVerifyRow';
 import axios from 'axios';
 
 
@@ -38,6 +38,10 @@ export function ShopeeVerifyPage({
     const [unknownBarcode, setUnknownBarcode] = useState('');
     const [flashKey, setFlashKey] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    const [videoWidth, setVideoWidth] = useState(380);
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { inputRef.current?.focus(); }, []);
     useEffect(() => {
@@ -148,140 +152,170 @@ export function ShopeeVerifyPage({
         });
     };
 
+    const startResize = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizing(true);
+    }, []);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+        if (!isResizing) return;
+        // คำนวณความกว้างใหม่ตามตำแหน่งเมาส์ (หักลบกับขอบซ้ายของตู้คอนเทนเนอร์)
+        const container = resizeRef.current?.parentElement;
+        if (container) {
+            const containerLeft = container.getBoundingClientRect().left;
+            const newWidth = e.clientX - containerLeft - 10; // ลบ offset นิดหน่อยเพื่อให้สมูท
+            if (newWidth > 260 && newWidth < 600) { // กั้น min-max ไว้ไม่ให้เพี้ยน
+            setVideoWidth(newWidth);
+            }
+        }
+        };
+
+        const handleMouseUp = () => { setIsResizing(false); };
+
+        if (isResizing) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        }
+        return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
     return (
-        <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto p-8">
-            <div className="flex items-center gap-4">
-                <button onClick={() => { stopRecording(false); onBack(); }} className="p-2.5 bg-white text-gray-500 border border-gray-200 rounded-xl hover:text-gray-900 transition-all"><ArrowLeft className="w-5 h-5" /></button>
-                <div className="flex-1"><ScannerStatusBar isFocused={isFocused} mode="verify" /></div>
+        <div ref={resizeRef} className="flex flex-col gap-4 w-full max-w-7xl mx-auto p-6 select-none">
+      <div className="flex items-center gap-4">
+        <button onClick={() => { stopRecording(false); onBack(); }} className="p-2.5 bg-white text-gray-500 border border-gray-200 rounded-xl hover:text-gray-900 transition-all shadow-sm"><ArrowLeft className="w-5 h-5" /></button>
+        <div className="flex-1"><ScannerStatusBar isFocused={isFocused} mode="verify" /></div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-2 items-start w-full relative">
+
+        {/* 📹 ฝั่งซ้าย: กล้อง + วิดีโอ (ปรับความกว้าง Dynamic ตาม State ตัวแปร videoWidth) */}
+        <div
+          style={{ width: window.innerWidth >= 1024 ? `${videoWidth}px` : '100%' }}
+          className="flex flex-col gap-3 w-full flex-shrink-0 bg-white p-3 rounded-xl border border-gray-200 shadow-sm"
+        >
+          <div className="bg-black rounded-xl overflow-hidden aspect-[4/3] relative shadow-inner">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-32 h-32 border-2 border-white/50 rounded-lg relative">
+                <span className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#ee4d2d]" />
+                <span className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#ee4d2d]" />
+                <span className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#ee4d2d]" />
+                <span className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#ee4d2d]" />
+              </div>
             </div>
-            <div className="flex flex-col lg:flex-row gap-5 items-start w-full">
+            {isRecording && (
+              <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded-full text-white text-xs font-bold tracking-wider">
+                <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" /> REC {formatTime(recordingTime)}
+              </div>
+            )}
+          </div>
 
-                {/* ฝั่งซ้าย: กล้อง + วิดีโอ (เหมือน TT เป๊ะ) */}
-                <div className="flex flex-col gap-3 w-full lg:w-[380px] flex-shrink-0">
-                    <div className="bg-black rounded-xl overflow-hidden aspect-[4/3] relative shadow-sm">
-                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-40 h-40 border-2 border-white/70 rounded-lg relative">
-                                <span className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-[#ee4d2d] rounded-tl-sm" />
-                                <span className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-[#ee4d2d] rounded-tr-sm" />
-                                <span className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-[#ee4d2d] rounded-bl-sm" />
-                                <span className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-[#ee4d2d] rounded-br-sm" />
-                            </div>
-                        </div>
-                        {isRecording && (
-                            <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 px-3 py-1.5 rounded-full z-10 text-white text-sm font-bold tracking-wider">
-                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /> REC {formatTime(recordingTime)}
-                            </div>
-                        )}
-                    </div>
+          {devices.length > 0 && (
+            <select
+              value={selectedDevice}
+              onChange={(e) => setSelectedDevice(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-orange-500 bg-gray-50 outline-none w-full text-gray-600"
+            >
+              {devices.map((device, index) => (
+                <option key={device.deviceId} value={device.deviceId}>{device.label || `กล้อง ${index + 1}`}</option>
+              ))}
+            </select>
+          )}
 
-                    {devices.length > 0 && (
-                                <div className="flex items-center gap-3">
-                                    <select
-                                        value={selectedDevice}
-                                        onChange={(e) => setSelectedDevice(e.target.value)}
-                                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none w-full"
-                                    >
-                                        {devices.map((device, index) => (
-                                            <option key={device.deviceId} value={device.deviceId}>
-                                                {device.label || `กล้อง ${index + 1}`}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                    <div className="flex gap-2 w-full">
-                        {!isRecording ? (
-                            <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors shadow-sm">
-                                <Video className="w-4 h-4" /> เริ่มบันทึกวิดีโอ
-                            </button>
-                        ) : (
-                            <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors">
-                                <VideoOff className="w-4 h-4" /> ยกเลิกวิดีโอ
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* ฝั่งขวา: รายละเอียด (เหมือน TT เป๊ะ) */}
-                <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4 min-w-0">
-                    <div className="flex justify-between items-start w-full">
-                        <div>
-                            <p className="text-lg font-bold text-gray-900">{orderData.tracking_number}</p>
-                            <p className="text-xs text-gray-400 font-mono mt-0.5">Order SN: {orderData.order_sn}</p>
-                            {IsPack ? (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-green-100 text-green-700">
-                                    <Package size={13} /> แพ็คครบแล้ว
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700">
-                                    <ClockIcon size={13} /> กำลังแพ็ค
-                                </span>
-                            )}
-                        </div>
-                        <div className="text-sm font-semibold bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                            {packedQuantity} / {totalQuantity}
-                        </div>
-                    </div>
-
-                    <div className="h-px bg-gray-200" />
-
-                    {/* โซนที่ 1: ล็อคการสแกน */}
-                    <div className={IsPack ? "opacity-60" : ""}>
-                        <label className="text-gray-500 text-xs font-medium block mb-1.5">สแกนสินค้าเพื่อเช็ค</label>
-                        <div className="flex gap-2">
-                            <input
-                                ref={inputRef}
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                onFocus={() => setIsFocused(true)}
-                                onBlur={() => setIsFocused(false)}
-                                // disabled={IsPack} // <-- ตัวแปรสำคัญ: ปิดการพิมพ์/สแกนเมื่อแพ็คครบ
-                                placeholder={"สแกน barcode สินค้า..."}
-                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#ee4d2d] disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            />
-                            {/* ปุ่มยกเลิก ไม่ควรโดนล็อค ให้ User กดถอยกลับได้เสมอ */}
-                            <button
-                                onClick={() => { stopRecording(false); onBack(); }}
-                                className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 font-medium bg-white"
-                            >
-                                ยกเลิก
-                            </button>
-                        </div>
-                        {unknownBarcode && (
-                            <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse">
-                                <AlertCircle className="w-3.5 h-3.5" /> ไม่พบ barcode <span className="font-mono">{unknownBarcode}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="h-px bg-gray-200" />
-
-                    {/* โซนที่ 2: แสดงผล List สินค้า (ถ้าอยากให้ดูจางๆ ทื่อๆ ตอนแพ็คเสร็จ ก็ใส่ Class เข้าไป) */}
-                    <div className={`flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1 transition-all ${IsPack ? 'opacity-70 pointer-events-none' : ''}`}>
-                        {orderData.products.map(p => (
-                            <ProductVerifyRow
-                                key={p.barcode ?? p.sku}
-                                product={p}
-                                scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0}
-                            />
-                        ))}
-                    </div>
-
-                    {/* โซนที่ 3: ปุ่มบันทึก (ปล่อยให้กดได้ หรือจะทำ Animation เรียกร้องความสนใจตอน IsPack=true ก็ได้) */}
-                    <div className="mt-auto pt-4 flex gap-3">
-                        <button
-                            onClick={handleShopeeSave}
-                            // ถ้าเป็นสถานะ View Only ค่อยใส่ disabled หรือ pointer-events-none ตรงนี้
-                            className={`bg-[#ee4d2d] hover:bg-[#d73f21] text-white font-bold py-3 px-6 rounded-xl transition-all flex-1 shadow-sm text-sm ${IsPack ? 'ring-4 ring-red-100' : ''}`}
-                        >
-                            บันทึกและอัปโหลดวิดีโอ (Shopee)
-                        </button>
-                    </div>
-                </div>
-            </div>
+          <div className="flex gap-2 w-full">
+            {!isRecording ? (
+              <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition-colors shadow-sm">
+                <Video className="w-3.5 h-3.5" /> เริ่มบันทึกวิดีโอ
+              </button>
+            ) : (
+              <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition-colors">
+                <VideoOff className="w-3.5 h-3.5" /> ยกเลิกวิดีโอ
+              </button>
+            )}
+          </div>
         </div>
-    );
+
+        {/* 🎛️ แท่งสำหรับคลิกลากขยายเฟรม (Resize Splitter Bar) แสดงเฉพาะจอใหญ่เดสก์ท็อป */}
+        <div
+          onMouseDown={startResize}
+          className={`hidden lg:flex items-center justify-center w-2 hover:w-3 self-stretch bg-transparent hover:bg-orange-400/30 cursor-col-resize transition-all rounded-md z-20 group ${isResizing ? 'bg-orange-500/40 w-3' : ''}`}
+        >
+          <MoveHorizontal className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100" />
+        </div>
+
+        {/* 📋 ฝั่งขวา: รายละเอียดออเดอร์ (ขยายพื้นที่เต็มที่ตามการยืดหดของฝั่งซ้าย) */}
+        <div className="flex-1 w-full bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-4 min-w-0 self-stretch">
+          <div className="flex justify-between items-start w-full">
+            <div>
+              <p className="text-xl font-extrabold text-gray-900 tracking-tight">{orderData.tracking_number}</p>
+              <p className="text-xs text-gray-400 font-mono mt-0.5">Order SN: {orderData.order_sn}</p>
+              {IsPack ? (
+                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1 rounded-md bg-green-100 text-green-700 font-medium">
+                  <Package size={12} /> แพ็คครบแล้ว
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1 rounded-md bg-amber-100 text-amber-700 font-medium">
+                  <ClockIcon size={12} /> กำลังแพ็ค
+                </span>
+              )}
+            </div>
+            <div className="text-base font-bold bg-slate-50 border border-gray-200 rounded-xl px-4 py-2 text-gray-700 shadow-sm">
+              {packedQuantity} / {totalQuantity}
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-100" />
+
+          <div className={IsPack ? "opacity-50" : ""}>
+            <label className="text-gray-400 text-xs font-semibold block mb-1.5">ช่องสแกนสินค้าตัวเลือก</label>
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                disabled={IsPack}
+
+                // 🟢 เพิ่ม Style ให้ดูว่าโดนล็อค (disabled:...)
+                placeholder={IsPack ? "ออเดอร์นี้แพ็คเสร็จแล้ว สแกนไม่ได้" : "สแกนบาร์โค้ดสินค้า..."}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#ee4d2d] focus:ring-1 focus:ring-[#ee4d2d]
+                            disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                />
+              <button onClick={() => { stopRecording(false); onBack(); }} className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-500 font-medium bg-white shadow-sm">ยกเลิก</button>
+            </div>
+            {unknownBarcode && (
+              <div key={flashKey} className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg animate-pulse border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> ไม่พบ SKU บาร์โค้ด: <span className="font-mono font-bold">{unknownBarcode}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="h-px bg-gray-100" />
+
+          {/* โซนรายการสินค้า ยืดหยุ่นขยายพื้นที่ตามขนาดจอที่ลากขยายได้ยอดเยี่ยม */}
+          <div className={`flex flex-col gap-2 flex-1 overflow-y-auto max-h-[400px] pr-1 transition-all ${IsPack ? 'opacity-70 pointer-events-none' : ''}`}>
+            {orderData.products.map(p => (
+              <ProductVerifyRow key={p.barcode ?? p.sku} product={p} scanned={p.barcode ? (scanCounts[p.barcode] ?? 0) : 0} />
+            ))}
+          </div>
+
+          <div className="pt-2 flex gap-3 mt-auto">
+            <button
+              onClick={handleShopeeSave}
+              className={`bg-[#ee4d2d] hover:bg-[#d73f21] text-white font-bold py-3.5 px-6 rounded-xl transition-all flex-1 shadow-md text-sm tracking-wide ${IsPack ? 'ring-4 ring-red-100' : ''}`}
+            >
+              บันทึกแพ็คเสร็จสิ้น และอัปโหลดวิดีโอ (Shopee)
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
 }
