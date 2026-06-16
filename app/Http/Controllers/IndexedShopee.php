@@ -117,7 +117,7 @@ class IndexedShopee extends Controller
             $bundle = $variant?->bundle ?? null;
             $actual_product_quantity = $product->quantity ?? null;
 
-            if (isset($bundle))
+            if ($bundle)
             {
                 // แปลง JSON string เป็น Array ของ Objects
                 $bundle_data = json_decode($bundle);
