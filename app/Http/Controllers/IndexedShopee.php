@@ -112,6 +112,8 @@ class IndexedShopee extends Controller
             ->get()
             ->keyBy('sku');
 
+        $temp_product_storage = [];
+
         foreach ($products as $key => $product) {
             $variant = $dbVariants->get($product->sku);
             $bundle = $variant?->bundle ?? null;
@@ -120,7 +122,6 @@ class IndexedShopee extends Controller
             {
                 $actual_product_quantity = $product->quantity ?? null;
                 $origin_product = $product ?? null;
-                $products = [];
 
                 // แปลง JSON string เป็น Array ของ Objects
                 $bundle_data = json_decode($bundle);
@@ -143,7 +144,7 @@ class IndexedShopee extends Controller
                     $newProduct->is_active    = $origin_sku?->is_active             ?? false;
                     $newProduct->quantity     = isset($bundle_obj?->quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
 
-                    $products[] = $newProduct;
+                    $temp_product_storage[] = $newProduct;
                 } elseif ($bundle_obj && ($bundle_obj->type === 'dummy_item')){
                 $newProduct = new \stdClass();
                     $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
@@ -152,7 +153,7 @@ class IndexedShopee extends Controller
                     $newProduct->barcode      = $bundle_obj?->barcode               ?? null;
                     $newProduct->is_active    = true;
                     $newProduct->quantity     = isset($bundle_obj?->quantity) && isset($actual_product_quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
-                $products[] = $newProduct;
+                $temp_product_storage[] = $newProduct;
                 }
             }
             } else {
@@ -160,8 +161,11 @@ class IndexedShopee extends Controller
                 $product->product_name = $variant?->product?->product_name ?? '❌ ไม่พบข้อมูล';
                 $product->barcode      = $variant?->barcode               ?? null;
                 $product->is_active    = $variant?->is_active             ?? false;
+                $temp_product_storage[] = $product;
             }
         }
+
+        $products = $temp_product_storage;
 
         return response()->json([
             'tracking_number' => $gasData->tracking_number ?? null,
