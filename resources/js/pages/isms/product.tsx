@@ -1,45 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, Pencil, X, Loader2, Package, Gift } from 'lucide-react';
+import { Search, Plus, Pencil, Loader2, Package, Gift } from 'lucide-react';
 import Swal from 'sweetalert2';
-import ProductEditModal, { ProductRow } from './ProductEditModal'; // 🟢 Import Modal เข้ามา
-
-const EMPTY_FORM = {
-    productName: '',
-    sku: '',
-    variantName: '',
-    barcode: '',
-    bundle: '',
-};
+import ProductEditModal, { ProductRow } from './ProductEditModal';
+import ProductAddModal from './ProductAddModal'; // 🟢 ดึงหน้า Add มาใช้
 
 export default function Product() {
     const [products, setProducts] = useState<ProductRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
 
-    // State สำหรับเพิ่มสินค้า
     const [showAddModal, setShowAddModal] = useState(false);
-    const [form, setForm] = useState(EMPTY_FORM);
-    const [submitting, setSubmitting] = useState(false);
 
-    // State สำหรับแก้ไขสินค้า
     const [editForm, setEditForm] = useState<ProductRow | null>(null);
     const [editSubmitting, setEditSubmitting] = useState(false);
 
-    useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const response = await fetch('/get-products', { headers: { Accept: 'application/json' } });
-                const responseData = await response.json();
-                if (!response.ok || responseData.status === 'error') throw new Error(responseData.message || 'ดึงข้อมูลล้มเหลว');
+    // 🟢 1. ดึง fetchProducts ออกมาข้างนอก จะได้สั่งโหลดใหม่จากที่ไหนก็ได้
+    const fetchProducts = async () => {
+        setLoading(true);
+        try {
+            const response = await fetch('/get-products', { headers: { Accept: 'application/json' } });
+            const responseData = await response.json();
+            if (!response.ok || responseData.status === 'error') throw new Error(responseData.message || 'ดึงข้อมูลล้มเหลว');
 
-                setProducts(responseData.data && responseData.data.length > 0 ? responseData.data : []);
-            } catch (err: any) {
-                Swal.fire('ดึงข้อมูลล้มเหลว', err.message, 'error');
-                setProducts([]);
-            } finally {
-                setLoading(false);
-            }
-        };
+            setProducts(responseData.data && responseData.data.length > 0 ? responseData.data : []);
+        } catch (err: any) {
+            Swal.fire('ดึงข้อมูลล้มเหลว', err.message, 'error');
+            setProducts([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchProducts();
     }, []);
 
@@ -89,16 +81,6 @@ export default function Product() {
         } catch { return <div className="text-red-500 text-[11px] font-mono break-all">⚠️ JSON ผิดพลาด</div>; }
     };
 
-    // --- Add Product Handlers ---
-    const openAddModal = () => { setForm(EMPTY_FORM); setShowAddModal(true); };
-    const closeAddModal = () => { if (!submitting) setShowAddModal(false); };
-    const handleAddProduct = async () => {
-        // อนาคตใส่ลอจิกยิง API เพิ่มสินค้าตรงนี้
-        Swal.fire('แจ้งเตือน', 'ฟังก์ชันเพิ่มสินค้ายังไม่เชื่อมต่อ API', 'info');
-        setShowAddModal(false);
-    };
-
-    // --- Edit Product Handlers ---
     const handleSaveFullEdit = async () => {
         if (!editForm) return;
         setEditSubmitting(true);
@@ -128,7 +110,8 @@ export default function Product() {
                     <Search className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
                     <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า, Sku, Variant, Barcode..." className="w-full bg-white border border-gray-200 shadow-sm rounded-xl pl-12 pr-4 py-3 text-gray-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
                 </div>
-                <button onClick={openAddModal} className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95">
+                {/* 🟢 2. ปรับปุ่มให้สั่งเปิด showAddModal */}
+                <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95">
                     <Plus className="w-5 h-5" /> Add New
                 </button>
             </div>
@@ -181,7 +164,7 @@ export default function Product() {
                 </div>
             </div>
 
-            {/* 🟢 เรียกใช้ Modal แก้ไขข้อมูล */}
+            {/* Modal แก้ไข */}
             {editForm && (
                 <ProductEditModal
                     editForm={editForm}
@@ -193,27 +176,16 @@ export default function Product() {
                 />
             )}
 
-            {/* 🟢 Add Modal*/}
+            {/* 🟢 3. เรียกใช้งาน ProductAddModal ของจริงตรงนี้ แทนก้อน HTML เก่า */}
             {showAddModal && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 relative">
-                        <button onClick={closeAddModal} className="absolute top-4 right-4 p-2 text-gray-400 hover:bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
-                            <h3 className="text-xl font-bold text-gray-800">เพิ่มสินค้าใหม่</h3>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <div className="sm:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1.5">Product Name</label><input type="text" value={form.productName} onChange={(e) => setForm({...form, productName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500" /></div>
-                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">SKU</label><input type="text" value={form.sku} onChange={(e) => setForm({...form, sku: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 font-mono" /></div>
-                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">Variant Name</label><input type="text" value={form.variantName} onChange={(e) => setForm({...form, variantName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500" /></div>
-                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">Barcode</label><input type="text" value={form.barcode} onChange={(e) => setForm({...form, barcode: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 font-mono" /></div>
-                        </div>
-                        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-100">
-                            <button onClick={closeAddModal} className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100">ยกเลิก</button>
-                            <button onClick={handleAddProduct} className="px-8 py-2.5 rounded-xl font-bold text-white bg-[#33509e] hover:bg-[#2a4180]">บันทึกข้อมูล</button>
-                        </div>
-                    </div>
-                </div>
+                <ProductAddModal
+                    availableOriginSkus={availableOriginSkus}
+                    onClose={() => setShowAddModal(false)}
+                    onSuccess={() => {
+                        setShowAddModal(false);
+                        fetchProducts(); // โหลดข้อมูลใหม่จาก GAS เพื่อเอารหัส ID ล่าสุดมาโชว์
+                    }}
+                />
             )}
 
             <style>{`

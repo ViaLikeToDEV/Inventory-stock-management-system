@@ -61,4 +61,23 @@ class ProductAdminController extends Controller
             ], 500);
         }
     }
+
+    public function addProductFull(Request $request)
+    {
+        // URL ของ GAS
+        $gasUrl = 'https://script.google.com/macros/s/AKfycbxhnDLikh_kWZzUfDWSiApDBlww5wbyNj-SYM8r0q9SzvUEDnc7qtpGD-pETCok37kOKg/exec';
+
+        try {
+            $payload = $request->all();
+            $payload['action'] = 'add_product_full';
+
+            $response = Http::timeout(30)->post($gasUrl, $payload);
+
+            if ($response->failed()) throw new \Exception('เชื่อมต่อ Google Sheet ไม่สำเร็จ');
+            return response()->json($response->json());
+
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
 }

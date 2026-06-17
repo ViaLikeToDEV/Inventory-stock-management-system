@@ -20,9 +20,9 @@ export type ProductRow = {
 };
 
 // ==========================================
-// 🛠️ Component: Bundle Builder (เหมือนเดิมเป๊ะ)
+// 🛠️ Component: Bundle Builder
 // ==========================================
-const BundleEditor = ({ bundleStr, availableOriginSkus, onChange }: any) => {
+export const BundleEditor = ({ bundleStr, availableOriginSkus, onChange }: any) => {
     const items = useMemo(() => {
         if (!bundleStr) return [];
         try { return JSON.parse(bundleStr); } catch { return []; }

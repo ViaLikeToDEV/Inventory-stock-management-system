@@ -46,4 +46,5 @@ Route::get('/admin/dashboard', function () {
 })->name('admin.dashboard');
 Route::get('/get-products', [ProductAdminController::class, 'fetchProducts']);
 Route::post('/edit-product-full', [App\Http\Controllers\ProductAdminController::class, 'editProductFull']);
+Route::post('/add-product-full', [App\Http\Controllers\ProductAdminController::class, 'addProductFull']);
 
