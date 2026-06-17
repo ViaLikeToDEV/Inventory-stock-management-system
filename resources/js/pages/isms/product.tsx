@@ -1,0 +1,226 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Plus, Pencil, X, Loader2, Package, Gift } from 'lucide-react';
+import Swal from 'sweetalert2';
+import ProductEditModal, { ProductRow } from './ProductEditModal'; // 🟢 Import Modal เข้ามา
+
+const EMPTY_FORM = {
+    productName: '',
+    sku: '',
+    variantName: '',
+    barcode: '',
+    bundle: '',
+};
+
+export default function Product() {
+    const [products, setProducts] = useState<ProductRow[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+
+    // State สำหรับเพิ่มสินค้า
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [form, setForm] = useState(EMPTY_FORM);
+    const [submitting, setSubmitting] = useState(false);
+
+    // State สำหรับแก้ไขสินค้า
+    const [editForm, setEditForm] = useState<ProductRow | null>(null);
+    const [editSubmitting, setEditSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const response = await fetch('/get-products', { headers: { Accept: 'application/json' } });
+                const responseData = await response.json();
+                if (!response.ok || responseData.status === 'error') throw new Error(responseData.message || 'ดึงข้อมูลล้มเหลว');
+
+                setProducts(responseData.data && responseData.data.length > 0 ? responseData.data : []);
+            } catch (err: any) {
+                Swal.fire('ดึงข้อมูลล้มเหลว', err.message, 'error');
+                setProducts([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchProducts();
+    }, []);
+
+    const filteredProducts = products.filter(p => {
+        const term = search.trim().toLowerCase();
+        if (!term) return true;
+        if (p.productName.toLowerCase().includes(term)) return true;
+        return p.variants.some(v => v.sku.toLowerCase().includes(term) || v.variantName.toLowerCase().includes(term) || v.barcode.toLowerCase().includes(term) || v.bundle.toLowerCase().includes(term));
+    });
+
+    const availableOriginSkus = useMemo(() => {
+        return products.flatMap(p =>
+            p.variants
+                .filter(v => !v.bundle || v.bundle.trim() === '' || v.bundle === '[]')
+                .map(v => ({ sku: v.sku, productName: p.productName, variantName: v.variantName }))
+        );
+    }, [products]);
+
+    const renderBundleUI = (bundleString: string) => {
+        if (!bundleString || bundleString.trim() === '') return <span className="text-gray-400 italic text-xs">- ไม่มี Bundle -</span>;
+        try {
+            const items = JSON.parse(bundleString);
+            if (!Array.isArray(items)) return <span className="text-red-500 text-xs">รูปแบบข้อมูลไม่ถูกต้อง</span>;
+            return (
+                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+                    {items.map((item, idx) => (
+                        item.type === 'origin_sku' ? (
+                            <div key={idx} className="bg-blue-50 border border-blue-100 rounded-lg p-2 flex justify-between items-start shadow-sm">
+                                <div className="flex flex-col pr-2">
+                                    <span className="text-blue-800 font-bold text-xs line-clamp-1" title={item.display_product_name}>{item.display_product_name}</span>
+                                    <span className="text-blue-600 text-[10px] font-mono mt-0.5">SKU: {item.sku}</span>
+                                </div>
+                                <div className="bg-blue-600 text-white text-[11px] font-bold px-2 py-1 rounded-md shrink-0">x {item.quantity || 1}</div>
+                            </div>
+                        ) : item.type === 'dummy_item' ? (
+                            <div key={idx} className="bg-pink-50 border border-pink-100 rounded-lg p-2 flex justify-between items-start shadow-sm">
+                                <div className="flex flex-col pr-2">
+                                    <span className="text-pink-800 font-bold text-xs flex items-center gap-1 line-clamp-1" title={item.display_product_name}><Gift className="w-3 h-3 shrink-0" /> {item.display_product_name}</span>
+                                    {item.barcode && <span className="text-pink-500 text-[10px] font-mono mt-0.5">Bar: {item.barcode}</span>}
+                                </div>
+                                <div className="bg-pink-500 text-white text-[11px] font-bold px-2 py-1 rounded-md shrink-0">x {item.quantity || 1}</div>
+                            </div>
+                        ) : null
+                    ))}
+                </div>
+            );
+        } catch { return <div className="text-red-500 text-[11px] font-mono break-all">⚠️ JSON ผิดพลาด</div>; }
+    };
+
+    // --- Add Product Handlers ---
+    const openAddModal = () => { setForm(EMPTY_FORM); setShowAddModal(true); };
+    const closeAddModal = () => { if (!submitting) setShowAddModal(false); };
+    const handleAddProduct = async () => {
+        // อนาคตใส่ลอจิกยิง API เพิ่มสินค้าตรงนี้
+        Swal.fire('แจ้งเตือน', 'ฟังก์ชันเพิ่มสินค้ายังไม่เชื่อมต่อ API', 'info');
+        setShowAddModal(false);
+    };
+
+    // --- Edit Product Handlers ---
+    const handleSaveFullEdit = async () => {
+        if (!editForm) return;
+        setEditSubmitting(true);
+        try {
+            const response = await fetch('/edit-product-full', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(editForm),
+            });
+            const data = await response.json();
+            if (!response.ok || data.status === 'error') throw new Error(data.message || 'แก้ไขข้อมูลไม่สำเร็จ');
+
+            setProducts(prev => prev.map(p => p.id === editForm.id ? editForm : p));
+            await Swal.fire({ icon: 'success', title: 'อัปเดตข้อมูลเรียบร้อย', timer: 1500, showConfirmButton: false });
+            setEditForm(null);
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        } finally {
+            setEditSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-transparent h-full relative">
+            <div className="flex items-center gap-4 mb-6">
+                <div className="relative flex-1">
+                    <Search className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า, Sku, Variant, Barcode..." className="w-full bg-white border border-gray-200 shadow-sm rounded-xl pl-12 pr-4 py-3 text-gray-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
+                </div>
+                <button onClick={openAddModal} className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95">
+                    <Plus className="w-5 h-5" /> Add New
+                </button>
+            </div>
+
+            <div className="w-full bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse min-w-[1000px]">
+                        <thead>
+                            <tr className="bg-[#f8fafc] text-gray-600 uppercase text-xs tracking-wider border-b border-gray-200">
+                                <th className="text-center font-bold py-4 px-4 w-20">ID</th>
+                                <th className="text-left font-bold py-4 px-4 w-[250px]">Product_name</th>
+                                <th className="text-left font-bold py-4 px-4 w-[180px]">Sku</th>
+                                <th className="text-left font-bold py-4 px-4 w-[200px]">Variant_name</th>
+                                <th className="text-left font-bold py-4 px-4 w-[150px]">Barcode</th>
+                                <th className="text-left font-bold py-4 px-4 min-w-[280px]">Bundle Items</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan={6} className="text-center py-12 text-gray-500 bg-white"><Loader2 className="w-8 h-8 animate-spin inline-block mb-3 text-blue-500" /><p className="font-medium">กำลังดึงข้อมูล...</p></td></tr>
+                            ) : filteredProducts.length === 0 ? (
+                                <tr><td colSpan={6} className="text-center py-12 text-gray-500 bg-white"><div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"><Package className="w-8 h-8 text-gray-400" /></div><p className="font-medium">ไม่พบข้อมูลสินค้า</p></td></tr>
+                            ) : (
+                                filteredProducts.map((product, pIdx) => (
+                                    product.variants.map((variant, vIdx) => (
+                                        <tr key={`${product.id}-${vIdx}`} className={`text-gray-700 text-sm hover:bg-blue-50/50 transition-colors ${vIdx === product.variants.length - 1 ? 'border-b-2 border-gray-200' : 'border-b border-gray-100'}`}>
+                                            {vIdx === 0 && (
+                                                <td rowSpan={product.variants.length} className="align-top text-center py-4 px-4 font-bold text-gray-500 bg-white border-r border-gray-100">
+                                                    <span className="flex flex-col items-center gap-2">
+                                                        {product.id}
+                                                        <button onClick={() => setEditForm(JSON.parse(JSON.stringify(product)))} className="p-1.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors" title="แก้ไขข้อมูล"><Pencil className="w-4 h-4" /></button>
+                                                    </span>
+                                                </td>
+                                            )}
+                                            {vIdx === 0 && (
+                                                <td rowSpan={product.variants.length} className="align-top py-4 px-4 font-bold text-gray-800 bg-white border-r border-gray-100">
+                                                    <div className="line-clamp-3 leading-relaxed" title={product.productName}>{product.productName}</div>
+                                                </td>
+                                            )}
+                                            <td className="py-4 px-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono text-gray-600 border border-gray-200">{variant.sku}</span></td>
+                                            <td className="py-4 px-4 font-medium text-gray-700 break-words">{variant.variantName}</td>
+                                            <td className="py-4 px-4"><span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider border border-blue-100">{variant.barcode}</span></td>
+                                            <td className="py-3 px-4">{renderBundleUI(variant.bundle)}</td>
+                                        </tr>
+                                    ))
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* 🟢 เรียกใช้ Modal แก้ไขข้อมูล */}
+            {editForm && (
+                <ProductEditModal
+                    editForm={editForm}
+                    setEditForm={setEditForm}
+                    availableOriginSkus={availableOriginSkus}
+                    onClose={() => setEditForm(null)}
+                    onSave={handleSaveFullEdit}
+                    isSubmitting={editSubmitting}
+                />
+            )}
+
+            {/* 🟢 Add Modal*/}
+            {showAddModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 relative">
+                        <button onClick={closeAddModal} className="absolute top-4 right-4 p-2 text-gray-400 hover:bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
+                            <h3 className="text-xl font-bold text-gray-800">เพิ่มสินค้าใหม่</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div className="sm:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1.5">Product Name</label><input type="text" value={form.productName} onChange={(e) => setForm({...form, productName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500" /></div>
+                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">SKU</label><input type="text" value={form.sku} onChange={(e) => setForm({...form, sku: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 font-mono" /></div>
+                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">Variant Name</label><input type="text" value={form.variantName} onChange={(e) => setForm({...form, variantName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500" /></div>
+                            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">Barcode</label><input type="text" value={form.barcode} onChange={(e) => setForm({...form, barcode: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 font-mono" /></div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-100">
+                            <button onClick={closeAddModal} className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100">ยกเลิก</button>
+                            <button onClick={handleAddProduct} className="px-8 py-2.5 rounded-xl font-bold text-white bg-[#33509e] hover:bg-[#2a4180]">บันทึกข้อมูล</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+            `}</style>
+        </div>
+    );
+}

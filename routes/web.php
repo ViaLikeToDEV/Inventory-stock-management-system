@@ -6,6 +6,7 @@ use App\Http\Controllers\OrderUploadController;
 use App\Http\Controllers\SummaryController;
 use App\Http\Controllers\SkuFetchTestController;
 use App\Http\Controllers\PlaygroundController;
+use App\Http\Controllers\ProductAdminController;
 
 
 Route::inertia('/', 'welcome')->name('home');
@@ -38,4 +39,11 @@ Route::controller(PlaygroundController::class)->group(function () {
 Route::inertia('/focus', 'pg/InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
 
+////////////////// admin///////////
+Route::get('/admin/dashboard', function () {
+    // ไปเรียกไฟล์ที่ resources/js/pages/isms/dashboardAdmin.tsx
+    return Inertia::render('isms/dashboardAdmin');
+})->name('admin.dashboard');
+Route::get('/get-products', [ProductAdminController::class, 'fetchProducts']);
+Route::post('/edit-product-full', [App\Http\Controllers\ProductAdminController::class, 'editProductFull']);
 
