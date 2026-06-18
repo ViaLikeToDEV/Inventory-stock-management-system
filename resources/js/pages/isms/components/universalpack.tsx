@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {CheckCircle2, Folder} from 'lucide-react';
+import { CheckCircle2, Folder } from 'lucide-react';
 
 import { ShopeeVerifyPage } from '@components/ShopeeVerifyPage';
 import { UniversalPackScan } from '@components/universalpackscan';
-
 
 // ─────────────────────────────────────────────
 // Types
@@ -31,7 +30,6 @@ interface ShopeeOrder {
     products: ShopeeProduct[];
 }
 
-
 // ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
@@ -50,13 +48,18 @@ export default function Packing() {
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedDevice, setSelectedDevice] = useState('');
+    const [isPickerOpen, setIsPickerOpen] = useState(false);
 
+    // 📌 ตัวเช็ค Environment
+    const isNativePHP = () => {
+        const ua = navigator.userAgent.toLowerCase();
+        return ua.includes('nativephp') || ua.includes('electron');
+    };
     useEffect(() => {
         const startCamera = async () => {
             try {
                 let currentDeviceId = selectedDevice;
 
-                // 1. ถ้ายังไม่มีการเลือกกล้อง ให้ดึงลิสต์กล้องมาเซ็ตก่อน
                 if (!currentDeviceId) {
                     const allDevices = await navigator.mediaDevices.enumerateDevices();
                     const cameraLists = allDevices.filter((d) => d.kind === 'videoinput');
@@ -71,12 +74,10 @@ export default function Packing() {
                     }
                 }
 
-                // 2. เคลียร์สตรีมเก่าทิ้งก่อนเปิดสตรีมใหม่ (สำคัญมากเวลาสลับกล้อง)
                 if (streamRef.current) {
                     streamRef.current.getTracks().forEach(t => t.stop());
                 }
 
-                // 3. ใช้ deviceId ในการจับกล้อง แทนการฟิกซ์ facingMode
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { deviceId: currentDeviceId ? { exact: currentDeviceId } : undefined },
                     audio: true
@@ -91,25 +92,19 @@ export default function Packing() {
         };
 
         const stopCamera = () => {
-            // เช็คก่อนว่า stopRecording มีการเรียกใช้จริงๆ หรือ error ไหม
             if (typeof stopRecording === 'function') stopRecording(false);
             streamRef.current?.getTracks().forEach(t => t.stop());
             streamRef.current = null;
         };
 
-        // เงื่อนไขในการเริ่มหรือหยุดกล้อง
         if (shopeeOrder) {
             startCamera();
         } else {
             stopCamera();
         }
 
-        // Cleanup function
         return () => stopCamera();
-
-    // 4. เพิ่ม selectedDevice เข้าไปใน Dependency ด้วย กล้องจะได้รีเฟรชเวลาสลับกล้อง
     }, [shopeeOrder, selectedDevice]);
-
 
     const getFileName = (orderId: string) => {
         const now = new Date();
@@ -129,7 +124,6 @@ export default function Packing() {
     const uploadToGoogleDriveBackground = async (blob: Blob, fileName: string, orderId: string) => {
         try {
             const base64 = await blobToBase64(blob);
-            // 🚨 URL ใหม่ที่คุณให้มา
             const response = await fetch("https://script.google.com/macros/s/AKfycby7pmxLZVsHwyDi_Btv3Qd1ANqV1Rd2Qr4W0YfhKfSJ6_SgCclXQV48nPCeDXXYSYtxuQ/exec", {
                 method: "POST", mode: "cors", headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify({ fileName, video: base64 })
@@ -143,47 +137,83 @@ export default function Packing() {
         }
     };
 
+    // 📌 ยุบรวมแจ้งเตือนสำเร็จให้เป็นฟังก์ชันเดียว จะได้ไม่ต้องเขียนซ้ำซ้อน
+    const showSuccessAlert = async () => {
+        const { default: Swal } = await import('sweetalert2');
+        Swal.fire({
+            icon: 'success',
+            title: 'เชื่อมต่อสำเร็จ',
+            text: '✅ช่องค้นหาและแพ็คออเดอร์ปลดล็อคแล้ว',
+            timer: 2000,
+            timerProgressBar: true,
+            showConfirmButton: false,
+            customClass: { popup: 'rounded-xl' }
+        });
+    };
+
+    // 📌 Adaptive Select Directory
     const handleSelectDirectory = async () => {
+        if (isPickerOpen) return;
+        setIsPickerOpen(true);
         try {
-            // @ts-ignore
-            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            setSaveDirectoryHandle(dirHandle);
-
-            // 📦 dynamic import เฉพาะตอนที่ฟังก์ชันนี้ทำงานสำเร็จ
-            const { default: Swal } = await import('sweetalert2');
-
-            Swal.fire({
-                icon: 'success',
-                title: 'เชื่อมต่อสำเร็จ',
-                text: '✅ช่องค้นหาและแพ็คออเดอร์ปลดล็อคแล้ว',
-                timer: 2000, // ⏱️ ปิดตัวเองภายใน 2000 มิลลิวินาที (2 วินาที)
-                timerProgressBar: true, // ตัววิ่งด้านล่าง บอกเวลาถอยหลัง (ดูโปรขึ้นเยอะ)
-                showConfirmButton: false, // ซ่อนปุ่มตกลงไปเลย เพราะมันจะปิดเองอยู่แล้ว
-                customClass: {
-                    popup: 'rounded-xl'
-                }
-            });
-
+            if (isNativePHP()) {
+                // สำหรับ NativePHP
+                const res = await fetch('/api/select-directory', { method: 'POST' });
+                const { path } = await res.json();
+                if (!path) return; // user กด cancel
+                setSaveDirectoryHandle(path); // เก็บเป็น string path
+                showSuccessAlert();
+            } else {
+                // สำหรับ Web App ปกติ
+                // @ts-ignore
+                const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                setSaveDirectoryHandle(dirHandle); // เก็บเป็น FileSystemDirectoryHandle
+                showSuccessAlert();
+            }
         } catch (error) {
-            console.error('ยกเลิกการเลือกโฟลเดอร์:', error);
+            console.error('เลือกโฟลเดอร์ไม่สำเร็จ:', error);
+        } finally {
+            setIsPickerOpen(false);
         }
     };
 
+    // 📌 Adaptive Save Video (ตัวปัญหาของนายโดนแก้ตรงนี้แหละ)
     const saveVideoLocally = async (blob: Blob, fileName: string) => {
         if (!saveDirectoryHandle) {
             alert('🚨 กรุณากดเลือกโฟลเดอร์บันทึกคลิป (ปุ่มบนตาราง) ก่อนเริ่มงานครับ!');
             return false;
         }
+
         try {
             const now = new Date();
             const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            const monthDirHandle = await saveDirectoryHandle.getDirectoryHandle(yearMonth, { create: true });
-            const fileHandle = await monthDirHandle.getFileHandle(fileName, { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            return true;
+
+            if (isNativePHP()) {
+                // 🚀 เซฟแบบ NativePHP (ส่งผ่าน API)
+                const base64 = await blobToBase64(blob);
+                const res = await fetch('/api/save-video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: saveDirectoryHandle, // string path
+                        yearMonth,
+                        fileName,
+                        video: base64
+                    })
+                });
+                const result = await res.json();
+                return result.success === true;
+            } else {
+                // 🌐 เซฟแบบ Web App (ใช้ File System Access API ของเดิมใน src 2)
+                const monthDirHandle = await saveDirectoryHandle.getDirectoryHandle(yearMonth, { create: true });
+                const fileHandle = await monthDirHandle.getFileHandle(fileName, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return true;
+            }
         } catch (error) {
+            console.error('Error saving video:', error);
             alert('เกิดข้อผิดพลาดในการบันทึกไฟล์ลงคอมพิวเตอร์');
             return false;
         }
@@ -200,9 +230,8 @@ export default function Packing() {
         setIsRecording(true);
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
-    }, []); // แยกรันตาม refs ไม่ต้องมี dependency ตัวอื่น
+    }, []);
 
-    // ปรับให้รับ orderId เข้ามาโดยตรง เพื่อรองรับทั้ง TT และ Shopee
     const stopRecording = (saveFile: boolean, targetOrderId?: string) => {
         if (timerRef.current) clearInterval(timerRef.current);
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
@@ -212,6 +241,8 @@ export default function Packing() {
             mediaRecorderRef.current.onstop = async () => {
                 const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
                 const fileName = getFileName(targetOrderId);
+
+                // รอเซฟลงเครื่องให้เสร็จก่อน
                 const localSaveSuccess = await saveVideoLocally(blob, fileName);
 
                 if (localSaveSuccess) {
@@ -234,80 +265,56 @@ export default function Packing() {
         return `${m}:${s}`;
     };
 
-    // ─── Shopee Verify View (UI เหมือน TikTok) ───
-    // ─── Shopee Verify View (ปรับเป็น HUD Window ซ้อนทับจอหลัก) ───
     if (shopeeOrder) {
-    return (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in">
-        <div className="bg-[#eef1f8] w-full h-full max-w-7xl rounded-2xl border border-slate-200/80 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col">
-            {/* หัวหน้าต่างแบบ HUD style */}
-            <div className="bg-white px-6 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Shopee Verification Window</span>
-            </div>
-            <button
-                onClick={() => { stopRecording(false, shopeeOrder.order_sn); setShopeeOrder(null); }}
-                className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors font-sans px-2 py-1 rounded-md hover:bg-gray-100"
-            >
-                ปิดหน้าต่าง (Esc)
-            </button>
-            </div>
+        return (
+            <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in">
+                <div className="bg-[#eef1f8] w-full h-full max-w-7xl rounded-2xl border border-slate-200/80 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col">
+                    <div className="bg-white px-6 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Shopee Verification Window</span>
+                        </div>
+                        <button
+                            onClick={() => { stopRecording(false, shopeeOrder.order_sn); setShopeeOrder(null); }}
+                            className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors font-sans px-2 py-1 rounded-md hover:bg-gray-100"
+                        >
+                            ปิดหน้าต่าง (Esc)
+                        </button>
+                    </div>
 
-            {/* เนื้อหาภายในหน้าต่างหน้าสแกน */}
-            <div className="flex-1 overflow-y-auto">
-            <ShopeeVerifyPage
-                orderData={shopeeOrder}
-                onBack={() => setShopeeOrder(null)}
-                videoRef={videoRef}
-                isRecording={isRecording}
-                recordingTime={recordingTime}
-                formatTime={formatTime}
-                startRecording={startRecording}
-                stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
-                devices={devices}
-                selectedDevice={selectedDevice}
-                setSelectedDevice={(id) => setSelectedDevice(id)}
-            />
+                    <div className="flex-1 overflow-y-auto">
+                        <ShopeeVerifyPage
+                            orderData={shopeeOrder}
+                            onBack={() => setShopeeOrder(null)}
+                            videoRef={videoRef}
+                            isRecording={isRecording}
+                            recordingTime={recordingTime}
+                            formatTime={formatTime}
+                            startRecording={startRecording}
+                            stopRecording={(save) => stopRecording(save, shopeeOrder.order_sn)}
+                            devices={devices}
+                            selectedDevice={selectedDevice}
+                            setSelectedDevice={(id) => setSelectedDevice(id)}
+                        />
+                    </div>
+                </div>
             </div>
-        </div>
-        </div>
-    );
+        );
     }
 
     const FolderIcon = () => (
-    <svg
-        viewBox="0 0 24 24"
-        width="15"
-        height="15"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-        <path d="M16 3l-4 4-4-4" />
-    </svg>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+            <path d="M16 3l-4 4-4-4" />
+        </svg>
     );
 
     const CheckIcon = () => (
-    <svg
-        viewBox="0 0 24 24"
-        width="15"
-        height="15"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-        <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
     );
-
-    // --- Button styles (consistent padding ทั้ง 2 state) ---
 
     const baseStyle = "flex items-center gap-1.5 px-5 py-[7px] rounded-lg transition-all duration-150 outline-none focus-visible:ring-2"
 
@@ -330,31 +337,31 @@ export default function Packing() {
     `
 
     return (
-            <div className="p-8 bg-[#eef1f8] min-h-full flex flex-col gap-6">
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={handleSelectDirectory}
-                            className={saveDirectoryHandle ? connectedStyle : unconnectedStyle}
-                            >
-                            {saveDirectoryHandle ? (
-                                <>
-                                <CheckIcon />
-                                <span>เชื่อมต่อแล้ว</span>
-                                </>
-                            ) : (
-                                <>
-                                <FolderIcon />
-                                <span>แฟ้มบันทึกวิดีโอ</span>
-                                </>
-                            )}
-                            </button>
-                    </div>
+        <div className="p-8 bg-[#eef1f8] min-h-full flex flex-col gap-6">
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={handleSelectDirectory}
+                    disabled={isPickerOpen}
+                    className={`${saveDirectoryHandle ? connectedStyle : unconnectedStyle} disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                    {saveDirectoryHandle ? (
+                        <>
+                            <CheckIcon />
+                            <span>เชื่อมต่อแล้ว</span>
+                        </>
+                    ) : (
+                        <>
+                            <FolderIcon />
+                            <span>แฟ้มบันทึกวิดีโอ</span>
+                        </>
+                    )}
+                </button>
+            </div>
 
-                {/* <div className="fixed inset-4 md:inset-10 z-[999] flex flex-col rounded-2xl border border-slate-300/50 bg-white/70 backdrop-blur-xl shadow-[0_8px_32px_0_rgba(148,163,184,0.15)] text-slate-700 font-mono overflow-hidden"> */}
-                <UniversalPackScan
-                    onOrderFound={(order) => setShopeeOrder(order)}
-                    saveDirectoryHandle={saveDirectoryHandle}
-                />
+            <UniversalPackScan
+                onOrderFound={(order) => setShopeeOrder(order)}
+                saveDirectoryHandle={saveDirectoryHandle}
+            />
         </div>
     );
 }

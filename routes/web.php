@@ -7,6 +7,8 @@ use App\Http\Controllers\SummaryController;
 use App\Http\Controllers\SkuFetchTestController;
 use App\Http\Controllers\PlaygroundController;
 use App\Http\Controllers\ProductAdminController;
+use Native\Desktop\Dialog;
+use Illuminate\Http\Request; // 👈 เติมบรรทัดนี้เข้าไป!
 
 
 Route::inertia('/', 'welcome')->name('home');
@@ -38,6 +40,46 @@ Route::controller(PlaygroundController::class)->group(function () {
 
 Route::inertia('/focus', 'pg/InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);
+
+
+Route::post('/api/select-directory', function () {
+    try {
+        // v2 syntax — folder picker
+        $path = Dialog::new()
+            ->title('เลือกโฟลเดอร์บันทึกวิดีโอ')
+            ->folders()   // ← ใช้ folders() ไม่ใช่ folder()
+            ->open();
+
+        return response()->json([
+            'path' => $path,
+            'success' => !is_null($path)
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'path' => null,
+            'success' => false,
+            'error' => $e->getMessage()  // ← ดู error ตรงๆ
+        ], 500);
+    }
+});
+
+Route::post('/api/save-video', function (Request $request) {
+    $dirPath  = $request->input('path');
+    $yearMonth = $request->input('yearMonth');
+    $fileName  = $request->input('fileName');
+    $base64    = $request->input('video');
+
+    $fullDir = $dirPath . DIRECTORY_SEPARATOR . $yearMonth;
+
+    if (!is_dir($fullDir)) {
+        mkdir($fullDir, 0755, true);
+    }
+
+    $fullPath = $fullDir . DIRECTORY_SEPARATOR . $fileName;
+    file_put_contents($fullPath, base64_decode($base64));
+
+    return response()->json(['success' => true]);
+});
 
 ////////////////// admin///////////
 Route::get('/admin/dashboard', function () {
