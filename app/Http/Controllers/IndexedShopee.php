@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Log;
 
 class IndexedShopee extends Controller
 {
+    private const GAS_VERSION_KEY = 'shopee_gas_version';
+
     public function queryShopeeData(Request $req)
     {
         $req->validate(['q' => 'required|string']);
@@ -41,7 +43,7 @@ class IndexedShopee extends Controller
             $currentGasVersion = trim($versionResponse->body());
 
             // ดึงค่า String เวอร์ชันล่าสุดจาก SQLite
-            $versionSetting = SystemSetting::where('key', 'shopee_gas_version')->first();
+            $versionSetting = SystemSetting::where('key', self::GAS_VERSION_KEY)->first();
 
             if ($versionSetting) {
                 // 🔍 เทียบค่า String กันตรงๆ เสมอๆ
@@ -49,18 +51,14 @@ class IndexedShopee extends Controller
 
                 Log::info("🚨 Version Changed! Local SQLite was [{$versionSetting->value}], but GAS reported [{$currentGasVersion}]");
 
-                return response()->json([
-                    'status' => 'version_changed',
-                    'message' => 'ระบบต้องอัพเดตฐานข้อมูล!',
-                ], 200);
-
-                    $versionSetting->update([
-                        'value' => $currentGasVersion
-                    ]);
+                    return response()->json([
+                        'status' => 'version_changed',
+                        'message' => 'ระบบต้องอัพเดตฐานข้อมูล!',
+                    ], 200);
                 }
             } else {
                 // เคสฉุกเฉินเผื่อในตารางไม่มีคีย์นี้ (แต่ตอน migration ใส่ไปแล้ว ไม่น่าเจอ)
-                SystemSetting::create(['key' => 'gas_version', 'value' => $currentGasVersion]);
+                SystemSetting::create(['key' => self::GAS_VERSION_KEY, 'value' => '1']);
             }
         } else {
             Log::error("❌ Cannot fetch version from GAS API.");
