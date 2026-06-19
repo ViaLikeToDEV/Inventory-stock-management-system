@@ -146,7 +146,7 @@ class IndexedShopee extends Controller
                     if ($bundle_obj && ($bundle_obj->type === 'origin_sku')) {
                         $origin_sku = Variant::where('sku', $bundle_obj->sku)->first();
                         $newProduct = new \stdClass();
-                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
+                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}_{$bundle_obj?->sku}";
                         $newProduct->variant_name = $bundle_obj?->display_variant ?? $origin_sku?->variant_name ?? '❌ ไม่พบ Origin_SKU นี้ในระบบ';
                         $newProduct->product_name = $bundle_obj?->display_product_name ?? $origin_sku?->product?->product_name ?? '❌ ไม่พบข้อมูล';
                         $newProduct->barcode      = $origin_sku?->barcode ?? null;
@@ -156,7 +156,7 @@ class IndexedShopee extends Controller
                         $temp_product_storage[] = $newProduct;
                     } elseif ($bundle_obj && ($bundle_obj->type === 'dummy_item')) {
                         $newProduct = new \stdClass();
-                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
+                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}_{$bundle_obj?->display_variant}";
                         $newProduct->variant_name = $bundle_obj?->display_variant ?? '❌ ไม่พบ dummy_item_variant ในระบบ';
                         $newProduct->product_name = $bundle_obj?->display_product_name ?? '❌ ไม่พบข้อมูล';
                         $newProduct->barcode      = $bundle_obj?->barcode ?? null;

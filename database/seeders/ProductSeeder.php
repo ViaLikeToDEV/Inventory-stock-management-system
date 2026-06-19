@@ -43,27 +43,42 @@ class ProductSeeder extends Seeder
             );
         }
 
+        $apiProductIds = [];
         foreach ($data->sheets->Products->rows as $row) {
+            $productId = $row[0];
+            $apiProductIds[] = $productId; // เก็บ ID ที่มีอยู่ใน G-Sheet รอบนี้ทั้งหมดไว้
+
             Product::updateOrCreate(
-                ['product_id' => $row[0]],
+                ['product_id' => $productId],
                 [
                     'product_name' => $row[1],
-                    'is_active' => $row[2] ?? true,
+                    'is_active'    => $row[2] ?? true,
                 ]
             );
         }
+        // ตัวไหนที่อยู่ใน DB แต่ไม่อยู่ในลิสต์รอบนี้ = โดนลบ หรือโดนเปลี่ยน ID ไปแล้ว -> ลบทิ้งซะ
+        Product::whereNotIn('product_id', $apiProductIds)->delete();
 
+
+        // --- 2. จัดการฝั่ง Variants ---
+        $apiSkus = [];
         foreach ($data->sheets->Variants->rows as $row) {
+            $sku = $row[0];
+            $apiSkus[] = $sku; // เก็บ SKU ที่มีอยู่ใน G-Sheet รอบนี้ทั้งหมดไว้
+
             Variant::updateOrCreate(
-                ['sku' => $row[0]],
+                ['sku' => $sku],
                 [
                     'product_id'   => $row[1],
                     'variant_name' => $row[2],
                     'barcode'      => $row[3] ?? null,
                     'bundle'       => $row[5] ?? null,
-                    'is_active' => $row[4] ?? true,
+                    'is_active'    => $row[4] ?? true,
                 ]
             );
         }
+        // แก้ปัญหา Duplicate กระจุย! ตัวไหนเป็น SKU เก่าที่ฝั่ง G-Sheet แก้ชื่อไปแล้ว
+        // มันจะไม่เหลือรอดใน DB เพราะจะโดนสั่งลบด้วยคำสั่งนี้ทันที
+        Variant::whereNotIn('sku', $apiSkus)->delete();
     }
 }
