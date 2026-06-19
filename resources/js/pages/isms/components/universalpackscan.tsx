@@ -192,12 +192,21 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
                     setShopeeMode('search');
                 });
             });
-                // 1. เรียกฟังก์ชันซิงค์ข้อมูล และรอจนกว่าจะซิงค์เสร็จ (await)
-                // await handleSync();
+        }
 
-                // // 2. ซิงค์เสร็จแล้ว บังคับยิงค้นหาใหม่อีกรอบออโต้ เพื่อดึงข้อมูลออเดอร์จริงมาแสดง
-                // await handleSearch(q);
-                return; // จบการทำงานของรอบนี้ เพราะรอบใหม่รันแทนแล้ว
+            if (data.db_auto_synced === true) {
+                import('sweetalert2').then((Swal) => {
+
+                Swal.default.fire({
+                    icon: 'success',
+                    title: 'ฐานข้อมูลถูกอัพเดตแล้ว',
+                    text: '✅ข้อมูลสินค้าได้รับการอัพเดตเป็นเวอร์ชันล่าสุด ทำงานต่อได้เลย',
+                    timer: 2000,
+                    timerProgressBar: true,
+                    showConfirmButton: false,
+                    customClass: { popup: 'rounded-xl' }
+                });
+            });
             }
 
             // --- ด้านล่างนี้คือ Logic เดิมของคุณ ทำงานตามปกติ ---

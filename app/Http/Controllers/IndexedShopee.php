@@ -8,6 +8,8 @@ use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Artisan;
+use GuzzleHttp\Promise\Utils;
 
 class IndexedShopee extends Controller
 {
@@ -30,41 +32,64 @@ class IndexedShopee extends Controller
 
         // ── 1. Transport error ────────────────────────────────────────
 
-        $responses = Http::pool(fn (Pool $pool) => [
-            $pool->as('orderSearchRes')->post($GAS, $searchParameter),
-            $pool->as('versionCheckerRes')->get($GASvproductLine, ['action' => 'version']),
-        ]);
+        $orderSearchPromise = Http::async()->post($GAS, $searchParameter);
+        $versionCheckerPromise = Http::async()->get($GASvproductLine, ['action' => 'version']);
 
-        $response = $responses['orderSearchRes'];
-        $versionResponse = $responses['versionCheckerRes'];
+        // สร้างตัวแปรไว้เก็บสถานะเผื่อเกิดเหตุการณ์เวอร์ชันไม่ตรง
+        $versionMismatchDetected = false;
 
-        if ($versionResponse->successful()) {
-            // ตัดช่องว่าง/ขึ้นบรรทัดใหม่ที่อาจติดมาจาก GAS Text Output ออกให้หมด
-            $currentGasVersion = trim($versionResponse->body());
+        // ⚡ ดักจัดการตัว versionChecker ทันทีที่มันตอบกลับมา (ไม่ต้องรอออเดอร์)
+        $versionCheckerPromise->then(function ($versionResponse) use (&$versionMismatchDetected) {
+            if ($versionResponse->successful()) {
+                $currentGasVersion = trim($versionResponse->body());
+                $versionSetting = SystemSetting::where('key', self::GAS_VERSION_KEY)->first();
 
-            // ดึงค่า String เวอร์ชันล่าสุดจาก SQLite
-            $versionSetting = SystemSetting::where('key', self::GAS_VERSION_KEY)->first();
+                if ($versionSetting) {
+                    // 🚨 ตรวจพบว่าเวอร์ชันมีการเปลี่ยนแปลง
+                    if ($versionSetting->value !== $currentGasVersion) {
+                        Log::info("🚨 Version Changed! Local SQLite was [{$versionSetting->value}], but GAS reported [{$currentGasVersion}]");
 
-            if ($versionSetting) {
-                // 🔍 เทียบค่า String กันตรงๆ เสมอๆ
-                if ($versionSetting->value !== $currentGasVersion) {
+                        $versionMismatchDetected = true;
 
-                Log::info("🚨 Version Changed! Local SQLite was [{$versionSetting->value}], but GAS reported [{$currentGasVersion}]");
+                        // 🛠️ [ต่อท่อตรงไป src 4] รันเครื่องมืออัปเดตฐานข้อมูลทันทีแบบไร้รอยต่อ
+                        try {
+                            Artisan::call('db:seed', [
+                                '--class' => 'ProductSeeder',
+                                '--force' => true,
+                            ]);
+                            Log::info("✅ Auto-sync products database completed via Seeder.");
 
-                    return response()->json([
-                        'status' => 'version_changed',
-                        'message' => 'ระบบต้องอัพเดตฐานข้อมูล!',
-                    ], 200);
+                        } catch (\Exception $e) {
+                            Log::error("❌ Auto-sync failed: " . $e->getMessage());
+                        }
+                    }
+                } else {
+                    SystemSetting::create(['key' => self::GAS_VERSION_KEY, 'value' => $currentGasVersion]);
                 }
             } else {
-                // เคสฉุกเฉินเผื่อในตารางไม่มีคีย์นี้ (แต่ตอน migration ใส่ไปแล้ว ไม่น่าเจอ)
-                SystemSetting::create(['key' => self::GAS_VERSION_KEY, 'value' => '1']);
+                Log::error("❌ Cannot fetch version from GAS API.");
             }
-        } else {
-            Log::error("❌ Cannot fetch version from GAS API.");
+        });
+
+        try {
+            // รอจนกว่าทั้งคู่จะประมวลผลเสร็จ (ฝั่ง version ทำ Logic ด้านบนเสร็จเรียบร้อยแล้ว)
+            $results = Utils::all([
+                'orderSearch' => $orderSearchPromise,
+                'versionChecker' => $versionCheckerPromise,
+            ])->wait();
+
+            // ดึงค่า Response ของตัวสั่งออเดอร์มาทำงานต่อ
+            $response = $results['orderSearch'];
+
+        } catch (\Throwable $e) {
+            Log::error("❌ Request Error in pool processing: " . $e->getMessage());
+            return response()->json([
+                'message' => 'เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย',
+                'detail'  => $e->getMessage(),
+            ], 500);
         }
 
-
+        // เช็คผลลัพธ์ของ orderSearch ต่อด้านล่างทันทีแบบ Seamless
         if ($response->failed()) {
             return response()->json([
                 'message' => 'เชื่อมต่อ GAS ไม่ได้',
@@ -78,14 +103,14 @@ class IndexedShopee extends Controller
         if (json_last_error() !== JSON_ERROR_NONE || !isset($resData->success)) {
             return response()->json([
                 'message' => 'GAS คืนข้อมูลที่อ่านไม่ได้',
-                'raw'     => $response->body(),   // ← เห็นของจริงเลย
+                'raw'     => $response->body(),
             ], 502);
         }
 
         // ── 3. GAS บอก success: false ────────────────────────────────
         if ($resData->success !== true) {
             return response()->json([
-                'message' => $resData->error       // ← ส่ง error จาก GAS ตรงๆ
+                'message' => $resData->error
                         ?? $resData->message
                         ?? 'GAS ปฏิเสธ request โดยไม่บอกเหตุผล',
             ], 400);
@@ -99,11 +124,7 @@ class IndexedShopee extends Controller
 
         // ── 5. Data enrichment ────────────────────────────────────────
         $products = $gasData->product_info_sku ?? [];
-        // dd($products);
-
         $skus = array_map(fn($p) => $p->sku, $products);
-
-        // dd($skus);
 
         $dbVariants = Variant::with('product')
             ->whereIn('sku', $skus)
@@ -116,60 +137,53 @@ class IndexedShopee extends Controller
             $variant = $dbVariants->get($product->sku);
             $bundle = $variant?->bundle ?? null;
 
-            if ($bundle)
-            {
+            if ($bundle) {
                 $actual_product_quantity = $product->quantity ?? null;
                 $origin_product = $product ?? null;
-
-                // แปลง JSON string เป็น Array ของ Objects
                 $bundle_data = json_decode($bundle);
 
+                foreach ($bundle_data as $index_value => $bundle_obj) {
+                    if ($bundle_obj && ($bundle_obj->type === 'origin_sku')) {
+                        $origin_sku = Variant::where('sku', $bundle_obj->sku)->first();
+                        $newProduct = new \stdClass();
+                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
+                        $newProduct->variant_name = $bundle_obj?->display_variant ?? $origin_sku?->variant_name ?? '❌ ไม่พบ Origin_SKU นี้ในระบบ';
+                        $newProduct->product_name = $bundle_obj?->display_product_name ?? $origin_sku?->product?->product_name ?? '❌ ไม่พบข้อมูล';
+                        $newProduct->barcode      = $origin_sku?->barcode ?? null;
+                        $newProduct->is_active    = $origin_sku?->is_active ?? false;
+                        $newProduct->quantity     = isset($bundle_obj?->quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
 
-                // จากข้อ 2 ข้อมูลมันครอบด้วย [ ] (Array) แปลว่าต้องเอาตัวแรกมาใช้ [0]
-                // dd($bundle_data[0] ?? 'ไม่มีข้อมูลใน Index 0 หรือแปลง JSON ไม่สำเร็จ');
-                // dd($bundle_data[1]);
-                // $bundle_object = $bundle_data[0] ?? null;
-                foreach ($bundle_data as $index_value => $bundle_obj){
-                if ($bundle_obj && ($bundle_obj->type === 'origin_sku')) {
-                    $origin_sku = Variant::where('sku', $bundle_obj->sku)->first();
-                    $newProduct = new \stdClass();
-                    // $origin_sku = $dbVariantsBundle->get($bundle_obj->sku);
-                    // dd($origin_sku);
-                    $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
-                    $newProduct->variant_name = $bundle_obj?->display_variant ?? $origin_sku?->variant_name ?? '❌ ไม่พบ Origin_SKU นี้ในระบบ';
-                    $newProduct->product_name = $bundle_obj?->display_product_name ?? $origin_sku?->product?->product_name ?? '❌ ไม่พบข้อมูล';
-                    $newProduct->barcode      = $origin_sku?->barcode               ?? null;
-                    $newProduct->is_active    = $origin_sku?->is_active             ?? false;
-                    $newProduct->quantity     = isset($bundle_obj?->quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
-
-                    $temp_product_storage[] = $newProduct;
-                } elseif ($bundle_obj && ($bundle_obj->type === 'dummy_item')){
-                $newProduct = new \stdClass();
-                    $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
-                    $newProduct->variant_name = $bundle_obj?->display_variant ?? '❌ ไม่พบ dummy_item_variant ในระบบ';
-                    $newProduct->product_name = $bundle_obj?->display_product_name ?? '❌ ไม่พบข้อมูล';
-                    $newProduct->barcode      = $bundle_obj?->barcode               ?? null;
-                    $newProduct->is_active    = true;
-                    $newProduct->quantity     = isset($bundle_obj?->quantity) && isset($actual_product_quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
-                $temp_product_storage[] = $newProduct;
+                        $temp_product_storage[] = $newProduct;
+                    } elseif ($bundle_obj && ($bundle_obj->type === 'dummy_item')) {
+                        $newProduct = new \stdClass();
+                        $newProduct->sku          = "{$origin_product->sku}_{$index_value}";
+                        $newProduct->variant_name = $bundle_obj?->display_variant ?? '❌ ไม่พบ dummy_item_variant ในระบบ';
+                        $newProduct->product_name = $bundle_obj?->display_product_name ?? '❌ ไม่พบข้อมูล';
+                        $newProduct->barcode      = $bundle_obj?->barcode ?? null;
+                        $newProduct->is_active    = true;
+                        $newProduct->quantity     = isset($bundle_obj?->quantity) && isset($actual_product_quantity) ? $actual_product_quantity * $bundle_obj->quantity : 0;
+                        $temp_product_storage[] = $newProduct;
+                    }
                 }
-            }
             } else {
-                $product->variant_name = $variant?->variant_name         ?? '❌ ไม่พบ SKU นี้ในระบบ';
+                $product->variant_name = $variant?->variant_name ?? '❌ ไม่พบ SKU นี้ในระบบ';
                 $product->product_name = $variant?->product?->product_name ?? '❌ ไม่พบข้อมูล';
-                $product->barcode      = $variant?->barcode               ?? null;
-                $product->is_active    = $variant?->is_active             ?? false;
+                $product->barcode      = $variant?->barcode ?? null;
+                $product->is_active    = $variant?->is_active ?? false;
                 $temp_product_storage[] = $product;
             }
         }
 
         $products = $temp_product_storage;
 
+        // คืนค่าผลลัพธ์ของ Order กลับไปตามปกติแบบไร้รอยต่อ โดยแอบทำงานซีดข้อมูลไว้เบื้องหลังเรียบร้อยแล้ว
         return response()->json([
             'tracking_number' => $gasData->tracking_number ?? null,
             'order_sn'        => $gasData->order_sn        ?? null,
             'products'        => $products,
             'is_packed'       => $gasData->IsPacked        ?? 0,
+            // (Optional) แนบ flag ไปบอกหน้าบ้านได้เผื่ออยากโชว์ Alert เพิ่มเติมทีหลัง
+            'db_auto_synced'  => $versionMismatchDetected ?? false,
         ]);
     }
 
