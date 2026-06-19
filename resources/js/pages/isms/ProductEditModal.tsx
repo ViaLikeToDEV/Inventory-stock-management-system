@@ -7,6 +7,7 @@ import Swal from 'sweetalert2';
 // ==========================================
 export type Variant = {
     sku: string;
+    original_sku?: string;
     variantName: string;
     barcode: string;
     bundle: string;

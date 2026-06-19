@@ -50,6 +50,10 @@ export default function Product() {
         );
     }, [products]);
 
+    const allSkusInSystem = useMemo(() => {
+        return products.flatMap(p => p.variants.map(v => v.sku.trim().toLowerCase()));
+    }, [products]);
+
     const renderBundleUI = (bundleString: string) => {
         if (!bundleString || bundleString.trim() === '') return <span className="text-gray-400 italic text-xs">- ไม่มี Bundle -</span>;
         try {
@@ -83,6 +87,47 @@ export default function Product() {
 
     const handleSaveFullEdit = async () => {
         if (!editForm) return;
+
+        if (!editForm.productName.trim()) {
+            return Swal.fire('แจ้งเตือน', 'กรุณากรอกชื่อสินค้าหลัก', 'warning');
+        }
+
+        const activeVariants = editForm.variants.filter(v => v.is_active !== false);
+
+        if (activeVariants.some(v => !v.sku.trim())) {
+            return Swal.fire('แจ้งเตือน', 'กรุณากรอกรหัส SKU ให้ครบทุกรายการ', 'warning');
+        }
+
+        // เช็คว่ากรอก SKU ซ้ำกันเองในหน้าแก้ไข
+        const skusInForm = activeVariants.map(v => v.sku.trim().toLowerCase());
+        const hasDuplicateInForm = skusInForm.some((sku, index) => skusInForm.indexOf(sku) !== index);
+        if (hasDuplicateInForm) {
+            return Swal.fire('ข้อมูลขัดแย้ง', 'กรอกรหัส SKU ซ้ำ', 'warning');
+        }
+
+        //เช็คว่า SKU ใหม่ ไปซ้ำกับ สินค้า ID อื่น ในระบบไหม
+        const otherSkusInSystem = new Set();
+        products.forEach(p => {
+            // ข้าม ID ของตัวเอง
+            if (p.id !== editForm.id) {
+                p.variants.forEach(v => {
+                    if (v.sku && v.is_active !== false) {
+                        otherSkusInSystem.add(v.sku.trim().toLowerCase());
+                    }
+                });
+            }
+        });
+
+        const duplicateSku = activeVariants.find(v => otherSkusInSystem.has(v.sku.trim().toLowerCase()));
+        if (duplicateSku) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'รหัส SKU ซ้ำ',
+                text: `รหัส SKU "${duplicateSku.sku}" ไปซ้ำกับสินค้าตัวอื่นในระบบ ไม่สามารถเพิ่มได้`,
+                confirmButtonColor: '#ef4444'
+            });
+        }
+
         setEditSubmitting(true);
         try {
             const response = await fetch('/edit-product-full', {
@@ -96,6 +141,7 @@ export default function Product() {
             setProducts(prev => prev.map(p => p.id === editForm.id ? editForm : p));
             await Swal.fire({ icon: 'success', title: 'อัปเดตข้อมูลเรียบร้อย', timer: 1500, showConfirmButton: false });
             setEditForm(null);
+            fetchProducts();
         } catch (err: any) {
             Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
         } finally {
@@ -142,7 +188,17 @@ export default function Product() {
                                                 <td rowSpan={product.variants.length} className="align-top text-center py-4 px-4 font-bold text-gray-500 bg-white border-r border-gray-100">
                                                     <span className="flex flex-col items-center gap-2">
                                                         {product.id}
-                                                        <button onClick={() => setEditForm(JSON.parse(JSON.stringify(product)))} className="p-1.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors" title="แก้ไขข้อมูล"><Pencil className="w-4 h-4" /></button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const cloned = JSON.parse(JSON.stringify(product));
+                                                                cloned.variants = cloned.variants.map((v: any) => ({ ...v, original_sku: v.sku }));
+                                                                setEditForm(cloned);
+                                                            }}
+                                                            className="p-1.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors"
+                                                            title="แก้ไขข้อมูล"
+                                                        >
+                                                            <Pencil className="w-4 h-4" />
+                                                        </button>
                                                     </span>
                                                 </td>
                                             )}
@@ -180,6 +236,7 @@ export default function Product() {
             {showAddModal && (
                 <ProductAddModal
                     availableOriginSkus={availableOriginSkus}
+                    allSkusInSystem={allSkusInSystem}
                     onClose={() => setShowAddModal(false)}
                     onSuccess={() => {
                         setShowAddModal(false);

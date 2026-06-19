@@ -6,13 +6,14 @@ import { BundleEditor } from './ProductEditModal';
 
 type Props = {
     availableOriginSkus: any[];
+    allSkusInSystem: string[];
     onClose: () => void;
     onSuccess: () => void; // สั่งให้หน้าหลักโหลดข้อมูลใหม่หลังเซฟเสร็จ
 };
 
 const EMPTY_VARIANT: Variant = { sku: '', variantName: '', barcode: '', bundle: '' };
 
-export default function ProductAddModal({ availableOriginSkus, onClose, onSuccess }: Props) {
+export default function ProductAddModal({ availableOriginSkus, allSkusInSystem, onClose, onSuccess }: Props) {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // ตั้งค่าฟอร์มเริ่มต้น มี 1
@@ -46,6 +47,25 @@ export default function ProductAddModal({ availableOriginSkus, onClose, onSucces
         // เช็คว่ากรอก SKU ครบไหม
         const hasEmptySku = addForm.variants.some(v => !v.sku.trim());
         if (hasEmptySku) return Swal.fire('แจ้งเตือน', 'กรุณากรอกรหัส SKU ให้ครบทุกรายการ', 'warning');
+
+        const skusInForm = addForm.variants.map(v => v.sku.trim().toLowerCase());
+        const hasDuplicateInForm = skusInForm.some((sku, index) => skusInForm.indexOf(sku) !== index);
+        if (hasDuplicateInForm) {
+            return Swal.fire('ข้อมูลขัดแย้ง', 'กรอกรหัส SKU ซ้ำ ตรวจสอบหน่อย', 'warning');
+        }
+
+        // (availableOriginSkus)
+        const existingSkusSet = new Set(allSkusInSystem);
+        const duplicateSku = addForm.variants.find(v => existingSkusSet.has(v.sku.trim().toLowerCase()));
+
+        if (duplicateSku) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'รหัส SKU ซ้ำ',
+                text: `รหัส SKU "${duplicateSku.sku}" มีอยู่แล้วในระบบ ไม่สามารถเพิ่มได้`,
+                confirmButtonColor: '#ef4444'
+            });
+        }
 
         setIsSubmitting(true);
         try {
