@@ -1,12 +1,19 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Models\Product;
 use App\Models\Variant;
+use App\Models\OrderItem;
+use App\Models\Order;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use App\DTOs\RawProductData;
 
 class PlaygroundController extends Controller
 {
@@ -16,6 +23,7 @@ class PlaygroundController extends Controller
     public function page(){
         return inertia::render('pg/pg');
     }
+
 
     public function SendThemAndSendBack(){
         $someobj = [
@@ -44,80 +52,51 @@ class PlaygroundController extends Controller
         $data = $response->object();
     }
 
-    public function pgfunc(){
-        $GAS = $this->googleAppsScriptUrl;
+    public function pgfunc(): JsonResponse
+    {
+    // {
+    //     $searchId = '260505K590GUJ1';
+    //     {
+    //     $order = Order::with('items')
+    //     ->PendingPack()
+    //     ->where(function ($q) use ($searchId) {
+    //         $q->where('tracking_number', $searchId)
+    //         ->orWhere('order_sn', $searchId);
+    //     })
+    //     ->first();
 
-        $mockRows = [
-            [
-                'tracking_number' => 'TH267097911330J',
-                'order_sn' => '260505HYJKR5VT',
-                'product_info_sku' => json_encode([
-                    ['sku' => 'โจ๊กคละ 4 รส', 'quantity' => 5, 'price' => 104]
-                ], JSON_UNESCAPED_UNICODE),
-                'timestamp' => now()->toIso8601String(),
-            ],
-            [
-                'tracking_number' => 'TH267098999999A',
-                'order_sn' => '260505XWERT789',
-                'product_info_sku' => json_encode([
-                    ['sku' => 'มาม่าต้มยำกุ้ง', 'quantity' => 2, 'price' => 15]
-                ], JSON_UNESCAPED_UNICODE),
-                'timestamp' => now()->toIso8601String(),
-            ],
-            [
-                'tracking_number' => 'TH267091111111B',
-                'order_sn' => '260506ABCDE123',
-                'product_info_sku' => json_encode([
-                    ['sku' => 'ปลากระป๋องสามแม่ครัว', 'quantity' => 10, 'price' => 200]
-                ], JSON_UNESCAPED_UNICODE),
-                'timestamp' => now()->toIso8601String(),
-            ]
-        ];
+    //     if (!$order) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'error' => 'ไม่พบข้อมูลออเดอร์ในระบบฐานข้อมูล SQLite Local'
+    //         ], 404);
+    //     }
 
-        // 2. ประกอบ Payload ให้ตรงกับที่ handleInsert ใน Apps Script รอรับ
-        $payload = [
-            'action' => 'insert',
-            'rows'   => $mockRows,
-        ];
+    //     $mockData = [
+    //         'success' => true,
+    //         'data' => [
+    //             'tracking_number' => $order->tracking_number,
+    //             'order_sn' => $order->order_sn,
+    //             'product_info_sku' => $order->items->map(function ($item) {
+    //                 return [
+    //                     'sku' => $item->sku,
+    //                     'quantity' => $item->quantity,
+    //                     'price' => $item->price,
+    //                 ];
+    //             })->values()->all(),
+    //             'TimeStamp' => $order->timestamp,
+    //             'IsPacked' => $order->is_packed ? 1 : 0,
+    //             'PackedAt' => $order->packed_at,
+    //             'IsActive' => $order->is_active ? 1 : 0,
+    //             'YearMonth' => $order->timestamp ? \Carbon\Carbon::parse($order->timestamp)->format('Y-m') : null,
+    //         ]
+    //     ];
 
-        // 3. ยิงไปที่ Google Apps Script Web App URL
-        // แนะนำให้เอา URL ไปใส่ในไฟล์ .env (เช่น GAS_WEBAPP_URL)
-
-        if (!$GAS) {
-            return response()->json([
-                'success' => false,
-                'error' => 'กรุณาตั้งค่า GAS_WEBAPP_URL ใน .env ก่อน'
-            ], 500);
-        }
-
-        try {
-            // ใช้ asJson() และต้องตบด้วย ->asForm() หรือใช้ Http::withHeaders() สไตล์นี้
-            // เพราะบางที GAS ตรวจจับ POST Request แบบ JSON ตรงๆ ไม่ได้ถ้าไม่เปิดรับ raw body
-            // แต่เนื่องจากโค้ด GAS ของคุณใช้ JSON.parse(e.postData.contents) ดังนั้นส่งแบบ JSON ตรงๆ ได้เลย
-            $response = Http::withHeaders([
-                'Accept' => 'application/json',
-            ])->post($GAS, $payload);
-
-            if ($response->failed()) {
-                throw new \Exception("GAS API returned status: " . $response->status());
-            }
-
-            // แกะ JSON ที่ได้กลับมาจาก Google Apps Script
-            $result = $response->json();
-
-            return response()->json([
-                'laravel_status' => 'Request Sent',
-                'gas_response' => $result
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('ShopeeDB Insert Error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'error' => 'พังจ้า ติดต่อ Google Apps Script ไม่ได้: ' . $e->getMessage()
-            ], 500);
-        }
+    //     // 3. 👈 คืนค่าเป็น Response Object ประกอบร่างจาก Guzzle PSR-7
+    //     return response()->json($mockData);
+    // }
+    $a = "5 monkeys";
+    return var_dump(0 == null);
     }
 
 

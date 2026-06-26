@@ -207,6 +207,8 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
                     customClass: { popup: 'rounded-xl' }
                 });
             });
+
+            return;
             }
 
             // --- ด้านล่างนี้คือ Logic เดิมของคุณ ทำงานตามปกติ ---
@@ -222,7 +224,22 @@ export function UniversalPackScan({ onOrderFound, saveDirectoryHandle }: ShopeeP
             const msg = err.response?.data?.message || 'เกิดข้อผิดพลาด';
             const raw = err.response?.data?.raw || '(ไม่มี raw)';
             const status = err.response?.status || '(ไม่มี status)';
+            const errorActionStatus = err.response?.data?.status;
             setErrorMsg(`[${status}] ${msg} | raw: ${raw}`);
+            if(errorActionStatus === 'shopee-sqlite-changed'){
+                import('sweetalert2').then((Swal) => {
+
+                Swal.default.fire({
+                    icon: 'success',
+                    title: 'ShopeeOrder',
+                    text: '✅ระบบดึงข้อมูลออเดอร์Shopeeใหม่แล้ว ทำงานต่อได้เลย',
+                    timer: 2000,
+                    timerProgressBar: true,
+                    showConfirmButton: false,
+                    customClass: { popup: 'rounded-xl' }
+                });
+            });
+            }
         } finally {
             setIsLoading(false);
         }

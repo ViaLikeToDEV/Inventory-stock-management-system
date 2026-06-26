@@ -7,6 +7,7 @@ use App\Http\Controllers\SummaryController;
 use App\Http\Controllers\SkuFetchTestController;
 use App\Http\Controllers\PlaygroundController;
 use App\Http\Controllers\ProductAdminController;
+use App\Http\Controllers\SystemSettingController;
 use Native\Desktop\Dialog;
 use Illuminate\Http\Request; // 👈 เติมบรรทัดนี้เข้าไป!
 
@@ -32,11 +33,19 @@ Route::post('/api/products/check', [SkuFetchTestController::class, 'check']);
 
 Route::controller(PlaygroundController::class)->group(function () {
     Route::get('/pg', 'page');
-    Route::get('/pgf', 'getDailySummary');
+    Route::get('/pgf', 'pgfunc');
     Route::get('/pgpack', 'pack');
     Route::get('/pgmonth', 'queryTrackings');
     Route::get('/pg1', 'querySingle');
 });
+
+
+Route::get('/test-dto', [PlaygroundController::class, 'index']);
+Route::post('/test-dto', [PlaygroundController::class, 'store'])->name('test-dto.store');
+
+
+
+Route::post('/admin/settings', [SystemSettingController::class, 'update']);
 
 Route::inertia('/focus', 'pg/InputTracker');
 Route::get('/get-packing-orders', [OrderUploadController::class, 'getOrders']);

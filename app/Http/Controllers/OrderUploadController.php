@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class OrderUploadController extends Controller
 {
@@ -28,23 +29,53 @@ class OrderUploadController extends Controller
             // 1. อ่านข้อมูลจากไฟล์ Excel
             $data = Excel::toArray([], $file);
             $rows = $data[0]; // ดึงข้อมูลจาก Sheet แรก
-            $firstRow = $rows[0];
-            $sheetType = '';
-            $previewData = [];
 
-            //แยกประเภท Sheet แบบง่าย TODO: เดียวมาทำ Validation เพิ่มนะไอค
-            if ($firstRow[0] === 'tracking_number' &&
-                $firstRow[1] === 'order_sn'){
-                $sheetType = 'Shopee';
-            } else if($firstRow[0] === 'Order ID' &&
-                $firstRow[1] === 'Order Status') {
-                $sheetType = 'TiktokShop';
-            } else {
+            if (empty($rows) || count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Format ไฟล์ไม่ถูกต้อง!'
+                    'message' => 'ไฟล์ไม่มีข้อมูล หรือจำนวนแถวไม่เพียงพอ'
                 ], 400);
             }
+
+            $firstRow = $rows[0];  // อาจจะเป็น Header หรือ Data เลย
+            $secondRow = $rows[1]; // ข้อมูลแถวถัดมา (เอาไว้ช่วย Re-check)
+            $sheetType = '';
+
+            // --- Regex Patterns สำหรับตรวจสอบ Content ---
+            $shopeeTrackingRegex = '/^TH\d{12}[A-Z0-9]$/';
+            $shopeeOrderRegex    = '/^\d{6}[A-Z0-9]{8}$/';
+
+            // 2. Logic คัดแยกประเภท Sheet (Robust Validation)
+            if (
+                // เคสปกติ: เช็คจาก Header ชื่อตรงเป๊ะ
+                ($firstRow[0] === 'tracking_number' && $firstRow[1] === 'order_sn') ||
+                // เคสหลุดสเปก: ไม่มี Header แต่ Data แถวแรก/แถวสอง แมตช์กับ Pattern ของ Shopee
+                (preg_match($shopeeTrackingRegex, trim($firstRow[0])) && preg_match($shopeeOrderRegex, trim($firstRow[1]))) ||
+                (preg_match($shopeeTrackingRegex, trim($secondRow[0])) && preg_match($shopeeOrderRegex, trim($secondRow[1])))
+            ) {
+                $sheetType = 'Shopee';
+            }
+            else if (
+                // เคสปกติของ TikTok
+                ($firstRow[0] === 'Order ID' && $firstRow[1] === 'Order Status') ||
+                // เคสหลุดสเปกของ TikTok (สมมติว่าดักด้วยการเช็คว่า Order ID ของ TikTok ขึ้นต้นด้วยไอดีเฉพาะ หรือใช้ Pattern เลขล้วน)
+                (is_numeric(trim($firstRow[0])) && strlen(trim($firstRow[0])) >= 18) // ตัวอย่างดักเลข Order TikTok
+            ) {
+                $sheetType = 'TiktokShop';
+            }
+            else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Format ไฟล์ไม่ถูกต้อง! ไม่สามารถระบุประเภทแพลตฟอร์มได้'
+                ], 400);
+            }
+
+            // ลบหัวตารางออกถ้าตรวจเจอว่าเป็น Header String ก่อนจะเอาไปทำ Preview/Save
+            // if ($sheetType === 'Shopee' && $firstRow[0] === 'tracking_number') {
+            //     array_shift($rows);
+            // } elseif ($sheetType === 'TiktokShop' && $firstRow[0] === 'Order ID') {
+            //     array_shift($rows);
+            // }
 
             if ($sheetType === 'TiktokShop'){
             // 2. วนลูปข้อมูล (เริ่มที่ index 2 เพราะข้ามแถวหัวข้อ 0 และ 1)

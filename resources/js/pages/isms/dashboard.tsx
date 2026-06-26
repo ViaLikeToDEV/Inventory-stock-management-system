@@ -1,10 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Home, ClipboardList, Package, Loader2, FileSearchCorner } from 'lucide-react';
+import { Home, ClipboardList, Package, Loader2, FileSearchCorner, Settings } from 'lucide-react';
+import { usePage } from "@inertiajs/react";
 import Swal from 'sweetalert2';
 import Packing from './packing';
 import UniversalPack from '@components/universalpack';
+import SystemSettings from '@components/system-settings';
 
 export function DashStat() {
+    const { hee } = usePage().props;
   // สร้าง State มารับข้อมูลที่ดึงมา
   const [stats, setStats] = useState({
     total: 0,
@@ -164,22 +167,23 @@ export default function Dashboard() {
     fileInputRef.current?.click();
   };
 
-  return (
+return (
     <div className="flex h-screen bg-[#f4f6fb] font-sans">
       {/* Sidebar ด้านซ้าย */}
       <aside className="w-64 bg-[#1e2e40] text-white flex flex-col shadow-lg z-10">
-        <div className="h-24 flex items-center justify-center border-b border-[#2a3f54]">
+        {/* LOGO Section */}
+        <div className="h-24 flex items-center justify-center border-b border-[#2a3f54] flex-shrink-0">
           <img
             src="/images/isms-logo.png"
             alt="ISMS Logo"
             className="h-full w-full object-contain p-4"
-            />
+          />
         </div>
 
-        <nav className="flex-1 pt-6">
+        {/* Navigation Group */}
+        <nav className="flex-1 pt-6 overflow-y-auto">
           <ul className="space-y-2 px-2">
             <li>
-              {/* 🟢 3. ปุ่ม HOME: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'home' */}
               <button
                 onClick={() => setActiveMenu('home')}
                 className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
@@ -191,7 +195,7 @@ export default function Dashboard() {
               </button>
             </li>
             <li>
-                <button
+              <button
                 onClick={() => setActiveMenu('order')}
                 className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
                   activeMenu === 'order' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
@@ -202,7 +206,6 @@ export default function Dashboard() {
               </button>
             </li>
             <li>
-              {/* 🟢 4. ปุ่ม Packing: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'packing' */}
               <button
                 onClick={() => setActiveMenu('packing')}
                 className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
@@ -214,7 +217,6 @@ export default function Dashboard() {
               </button>
             </li>
             <li>
-              {/* 🟢 4. ปุ่ม Packing: พอกดปุ๊บ ให้เซ็ตค่าเป็น 'packing' */}
               <button
                 onClick={() => setActiveMenu('universal_pack')}
                 className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
@@ -225,9 +227,21 @@ export default function Dashboard() {
                 UniversalPack
               </button>
             </li>
-
           </ul>
         </nav>
+
+        {/* 🟢 Settings Section: แยกขาดออกจากรายการเมนูปกติ ดันติดขอบล่างสุด */}
+        <div className="mt-auto pb-6 px-2 border-t border-gray-700/50 pt-4">
+          <button
+            onClick={() => setActiveMenu('settings')}
+            className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+              activeMenu === 'settings' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+            }`}
+          >
+            <Settings className="w-5 h-5 mr-4" />
+            SETTINGS
+          </button>
+        </div>
       </aside>
 
       {/* พื้นที่เนื้อหาหลักด้านขวา */}
@@ -238,16 +252,14 @@ export default function Dashboard() {
         {/* พื้นที่ Content ที่จะสลับหน้าจอ */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* 🟢 1. ถ้า activeMenu เป็น 'home' ให้โชว์หน้า Dashboard และ อัปโหลด CSV */}
+          {/* 🟢 1. หน้า HOME */}
           {activeMenu === 'home' && (
             <div className="flex flex-col h-full">
-              {/* ส่วนหัวและตัวเลขสถิติ */}
               <div className="p-8 pb-10 bg-[#eef1f8]">
                 <h2 className="text-3xl font-bold text-gray-800 mb-8">Dashboard</h2>
                 <DashStat />
               </div>
 
-              {/* ส่วนอัปโหลด CSV (โค้ดเดิมของคุณเป๊ะๆ) */}
               <div className="bg-white flex-1 flex flex-col items-center pt-20 rounded-t-3xl shadow-[-10px_-10px_30px_-15px_rgba(0,0,0,0.1)]">
                 <h3 className="text-4xl font-bold text-gray-800 mb-10">Add CSV File</h3>
 
@@ -287,24 +299,22 @@ export default function Dashboard() {
                         const data = await response.json();
                         const sheetType = data.sheetType;
 
-
                         if (!response.ok || data.status === 'error') {
                             throw new Error(data.message || 'Upload failed');
                         }
 
-                        console.log(data);
-                            Swal.fire({
-                                icon: "success",
-                                title: `${sheetType || 'unknow'}`,
-                                text: `\n เพิ่มแล้ว: ${data.sheet_result?.inserted || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.skipped || 0}`
-                            });
+                        Swal.fire({
+                            icon: "success",
+                            title: `${sheetType || 'unknown'}`,
+                            text: `\n เพิ่มแล้ว: ${data.sheet_result?.inserted || 0} \n ข้อมูลซ้ำ: ${data.sheet_result?.skipped || 0}`
+                        });
 
                     } catch(err: any) {
                         if (err.response && err.response.status === 400) {
                                 Swal.fire({
                                     icon: 'error',
                                     title: 'Upload Validator',
-                                    text: err.response.data.message, // ดึงข้อความจากที่ Laravel ส่งมา
+                                    text: err.response.data.message,
                                     confirmButtonColor: '#d33'
                                 });
                         } else {
@@ -317,25 +327,24 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 🟢 2. ถ้า activeMenu เป็น 'packing' ให้ดึง Component Packing มาโชว์ */}
+          {/* 🟢 2. หน้า Packing */}
           {activeMenu === 'packing' && (
             <div className="p-8 bg-[#eef1f8] min-h-full">
               <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2>
-
-              {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
               <Packing />
-
             </div>
           )}
 
+          {/* 🟢 3. หน้า Universal Pack */}
           {activeMenu === 'universal_pack' && (
             <div className="p-8 bg-[#eef1f8] min-h-full">
-              {/* <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2> */}
-
-              {/* เรียกใช้ไฟล์ packing.tsx ตรงนี้ */}
               <UniversalPack />
-
             </div>
+          )}
+
+          {/* 🟢 4. หน้า Settings (เพิ่มดักไว้ให้ด้วยเพื่อความสมบูรณ์ เผื่อเวลากดปุ่มแล้วหน้าจอจะได้ไม่โล่ง) */}
+          {activeMenu === 'settings' && (
+            <SystemSettings activeMenu={activeMenu} />
           )}
 
         </div>

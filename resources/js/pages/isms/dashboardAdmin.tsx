@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Home, ClipboardList, Package, Loader2, FileSearchCorner } from 'lucide-react';
+import { Home, ClipboardList, Package, Loader2, FileSearchCorner, ListTodo } from 'lucide-react';
 import Swal from 'sweetalert2';
 import Packing from './packing';
 import UniversalPack from '@components/universalpack';
@@ -62,6 +62,7 @@ export function DashStat() {
     const pendingTotal = stats.total - stats.packed;
     const pendingShopee = stats.shopee.total - stats.shopee.packed;
     const pendingTiktok = stats.tiktok.total - stats.tiktok.packed;
+
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -165,6 +166,8 @@ export default function Dashboard() {
     fileInputRef.current?.click();
   };
 
+ const arr_sometext = ['text1', 'text2', 'text3', 'text4', 'text5'];
+
   return (
     <div className="flex h-screen bg-[#f4f6fb] font-sans">
       {/* Sidebar ด้านซ้าย */}
@@ -224,6 +227,18 @@ export default function Dashboard() {
               >
                 <FileSearchCorner className="w-5 h-5 mr-4" />
                 UniversalPack
+              </button>
+            </li>
+
+            <li>
+              <button
+                onClick={() => setActiveMenu('stocks')}
+                className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
+                  activeMenu === 'stocks' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                }`}
+              >
+                <ListTodo className="w-5 h-5 mr-4" />
+                Stocks
               </button>
             </li>
 
@@ -341,6 +356,16 @@ export default function Dashboard() {
             <div className="p-8 bg-[#eef1f8] min-h-full">
               <h2 className="text-3xl font-bold text-gray-800 mb-8">Packing System</h2>
               <Packing />
+            </div>
+          )}
+
+          {activeMenu === 'stocks' && (
+            <div className='p-8 bg-[#eef1f8] min-h-full flex items-center gap-5'>
+                {/* <div className='fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in'> */}
+                {arr_sometext.map((itemnaja, index) => (
+                    <div className='bg-blue-500'>item: {itemnaja} index: {index}</div>
+                ))}
+                {/* </div> */}
             </div>
           )}
 
