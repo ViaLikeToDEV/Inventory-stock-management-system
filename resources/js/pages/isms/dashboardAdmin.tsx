@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 import Packing from './packing';
 import UniversalPack from '@components/universalpack';
 import Product from './product';
+import Order from './order';
 
 export function DashStat() {
   // สร้าง State มารับข้อมูลที่ดึงมา
@@ -330,6 +331,14 @@ export default function Dashboard() {
                   }}
                 />
               </div>
+            </div>
+          )}
+
+          {/* 🟢 หน้า Order */}
+          {activeMenu === 'order' && (
+            <div className="p-8 bg-[#eef1f8] min-h-full">
+              <h2 className="text-3xl font-bold text-gray-800 mb-8">Order Management</h2>
+              <Order />
             </div>
           )}
 
