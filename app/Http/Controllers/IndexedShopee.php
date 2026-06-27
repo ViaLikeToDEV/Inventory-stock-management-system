@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Normalizers\GasProductNormalizer;
 use App\Services\ProductEnrichmentService;
-use App\Factories\OrderRepositoryFactory;
+use App\Services\RequiredProductEnrichmentService;
 use App\Services\VersionCheckerService;
 
 
@@ -20,6 +20,7 @@ class IndexedShopee extends Controller
 {
     public function __construct(
         private readonly ProductEnrichmentService $enricher,
+        private readonly RequiredProductEnrichmentService $requiredEnricher,
         private readonly VersionCheckerService $versionChecker,
     ) {}
 
@@ -145,11 +146,6 @@ class IndexedShopee extends Controller
         );
 
         $skus = array_map(fn($p) => $p->sku, $products);
-
-        $dbVariants = Variant::with('product')
-            ->whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
 
         return response()->json([
             'tracking_number' => $gasData->tracking_number ?? null,
@@ -334,5 +330,21 @@ class IndexedShopee extends Controller
         } else {
             Log::error("❌ Cannot fetch version from GAS API.");
         }
+    }
+
+    public function getRequiredProducts(Request $req){
+            $parameter = [
+                'action' => 'query_sku_summary',
+            ];
+            $gasUrl = config('services.shopee_script_url');
+            $response = json_decode(Http::post($gasUrl, $parameter));
+
+            // return $response->summary;
+
+            $normalize = GasProductNormalizer::requiredProducts_normalize(
+                (array) ($response->summary ?? [])
+            );
+
+            return $this->requiredEnricher->enrich($normalize);
     }
 }

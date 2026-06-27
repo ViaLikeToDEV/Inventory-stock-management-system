@@ -5,6 +5,7 @@ import Packing from './packing';
 import UniversalPack from '@components/universalpack';
 import Product from './product';
 import Order from './order';
+import Stocks from '@components/Stocks';
 
 export function DashStat() {
   // สร้าง State มารับข้อมูลที่ดึงมา
@@ -369,14 +370,11 @@ export default function Dashboard() {
           )}
 
           {activeMenu === 'stocks' && (
-            <div className='p-8 bg-[#eef1f8] min-h-full flex items-center gap-5'>
-                {/* <div className='fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in'> */}
-                {arr_sometext.map((itemnaja, index) => (
-                    <div className='bg-blue-500'>item: {itemnaja} index: {index}</div>
-                ))}
-                {/* </div> */}
+            <div className="p-8 bg-[#eef1f8] min-h-full">
+                <h2 className="text-3xl font-bold text-gray-800 mb-8">Stock Management</h2>
+                <Stocks />
             </div>
-          )}
+            )}
 
         </div>
       </main>
