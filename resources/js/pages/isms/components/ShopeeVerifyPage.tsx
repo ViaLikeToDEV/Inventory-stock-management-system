@@ -265,15 +265,17 @@ useEffect(() => {
                     )}
 
                     <div className="flex gap-2 w-full">
-                        {!isRecording ? (
+                        {!isRecording && (
                             <button onClick={startRecording} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-black py-3 px-4 rounded-xl transition-colors shadow-sm min-h-[46px]">
                                 <Video className="w-5 h-5" /> เปิดระบบบันทึกคลิปด้วยมือ
                             </button>
-                        ) : (
-                            <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-black py-3 px-4 rounded-xl transition-colors min-h-[46px]">
-                                <VideoOff className="w-5 h-5" /> ล้างคลิป / ยกเลิกอัด
-                            </button>
-                        )}
+                        )
+                        // : (
+                        //     <button onClick={() => stopRecording(false)} className="flex-1 flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-black py-3 px-4 rounded-xl transition-colors min-h-[46px]">
+                        //         <VideoOff className="w-5 h-5" /> ล้างคลิป / ยกเลิกอัด
+                        //     </button>
+                        // )
+                        }
                     </div>
                 </div>
 
