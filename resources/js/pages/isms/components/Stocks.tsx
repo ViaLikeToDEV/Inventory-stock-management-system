@@ -224,7 +224,7 @@ export default function StockDashboard() {
             {totalUnpacked.toLocaleString()} <span className="text-xl font-bold text-amber-800">ชิ้น</span>
           </p>
           <p className="text-sm text-amber-900 font-bold mt-2 bg-amber-100 p-2 rounded-lg inline-block self-start">
-            คิดเป็น {pct(totalUnpacked)}% ของสต็อกทั้งหมด
+             {pct(totalUnpacked)}% ที่ต้องถูกแพ็ค
           </p>
         </div>
 
@@ -233,7 +233,7 @@ export default function StockDashboard() {
             <p className="text-base font-bold text-gray-500 mb-1">Packed พร้อมส่ง</p>
             <p className="text-3xl font-black text-[#2a78d6]">{totalPacked.toLocaleString()}</p>
           </div>
-          <p className="text-sm font-semibold text-gray-400 mt-3">{pct(totalPacked)}% ของทั้งหมด</p>
+          <p className="text-sm font-semibold text-gray-400 mt-3">{pct(totalPacked)}% งานเสร็จสิ้น</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border-2 border-gray-100 flex flex-col justify-between shadow-sm">
