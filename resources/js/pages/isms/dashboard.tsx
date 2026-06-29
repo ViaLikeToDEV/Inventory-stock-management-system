@@ -180,6 +180,7 @@ return (
           />
         </div>
 
+
         {/* Navigation Group */}
         <nav className="flex-1 pt-6 overflow-y-auto">
           <ul className="space-y-2 px-2">
@@ -242,6 +243,8 @@ return (
             SETTINGS
           </button>
         </div>
+
+
       </aside>
 
       {/* พื้นที่เนื้อหาหลักด้านขวา */}
