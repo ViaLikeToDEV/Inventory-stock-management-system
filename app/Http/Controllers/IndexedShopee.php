@@ -333,6 +333,12 @@ class IndexedShopee extends Controller
     }
 
     public function getRequiredProducts(Request $req){
+        $versionMismatchDetected = false;
+        $ProductLineGAS = config('services.products_script_url');
+        $ProductLineVersionChecker = Http::get($ProductLineGAS, ['action' => 'version']);
+        if ($ProductLineVersionChecker){
+            $this->handleVersionCheck($ProductLineVersionChecker, $versionMismatchDetected);
+        }
             $parameter = [
                 'action' => 'query_sku_summary',
             ];
