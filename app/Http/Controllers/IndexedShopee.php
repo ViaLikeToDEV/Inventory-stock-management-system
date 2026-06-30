@@ -334,23 +334,35 @@ class IndexedShopee extends Controller
 
     public function getRequiredProducts(Request $req){
         $versionMismatchDetected = false;
+        $gasUrl = config('services.shopee_script_url');
         $ProductLineGAS = config('services.products_script_url');
+
+        $parameter = [
+                'action' => 'query_sku_summary',
+        ];
+
+        $ShopeeOrderReq = Http::async()->post($gasUrl, $parameter);
         $ProductLineVersionChecker = Http::get($ProductLineGAS, ['action' => 'version']);
         if ($ProductLineVersionChecker){
             $this->handleVersionCheck($ProductLineVersionChecker, $versionMismatchDetected);
         }
-            $parameter = [
-                'action' => 'query_sku_summary',
-            ];
-            $gasUrl = config('services.shopee_script_url');
-            $response = json_decode(Http::post($gasUrl, $parameter));
 
-            // return $response->summary;
 
-            $normalize = GasProductNormalizer::requiredProducts_normalize(
-                (array) ($response->summary ?? [])
-            );
+            $waitShopee = $ShopeeOrderReq->wait();
+
+            if ($waitShopee->successful()){
+            $response = json_decode($waitShopee);
+
+                // return $response->summary;
+
+                $normalize = GasProductNormalizer::requiredProducts_normalize(
+                    (array) ($response->summary ?? [])
+                );
+
 
             return $this->requiredEnricher->enrich($normalize);
+            }
+
+            return response()->json(['error' => 'GAS Error'], 502);
     }
 }
