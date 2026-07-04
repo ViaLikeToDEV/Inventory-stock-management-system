@@ -4,7 +4,6 @@ import { usePage } from "@inertiajs/react";
 import Swal from 'sweetalert2';
 import Packing from './packing';
 import UniversalPack from '@components/universalpack';
-import SystemSettings from '@components/system-settings';
 
 export function DashStat() {
     const { hee } = usePage().props;
@@ -231,19 +230,6 @@ return (
           </ul>
         </nav>
 
-        {/* 🟢 Settings Section: แยกขาดออกจากรายการเมนูปกติ ดันติดขอบล่างสุด */}
-        <div className="mt-auto pb-6 px-2 border-t border-gray-700/50 pt-4">
-          <button
-            onClick={() => setActiveMenu('settings')}
-            className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
-              activeMenu === 'settings' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
-            }`}
-          >
-            <Settings className="w-5 h-5 mr-4" />
-            SETTINGS
-          </button>
-        </div>
-
 
       </aside>
 
@@ -344,12 +330,6 @@ return (
               <UniversalPack />
             </div>
           )}
-
-          {/* 🟢 4. หน้า Settings (เพิ่มดักไว้ให้ด้วยเพื่อความสมบูรณ์ เผื่อเวลากดปุ่มแล้วหน้าจอจะได้ไม่โล่ง) */}
-          {activeMenu === 'settings' && (
-            <SystemSettings activeMenu={activeMenu} />
-          )}
-
         </div>
       </main>
     </div>
