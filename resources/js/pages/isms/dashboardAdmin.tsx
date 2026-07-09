@@ -5,7 +5,7 @@ import Packing from './packing';
 import UniversalPack from '@components/universalpack';
 import Product from './product';
 import Order from './order';
-import Stocks from '@components/Stocks';
+import Preparation from '@components/Preparation';
 
 export function DashStat() {
   // สร้าง State มารับข้อมูลที่ดึงมา
@@ -234,13 +234,13 @@ export default function Dashboard() {
 
             <li>
               <button
-                onClick={() => setActiveMenu('stocks')}
+                onClick={() => setActiveMenu('Preparation')}
                 className={`w-full flex items-center px-6 py-3 rounded-lg mx-2 transition-colors ${
-                  activeMenu === 'stocks' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
+                  activeMenu === 'Preparation' ? 'bg-[#2b3e52] text-white border-l-4 border-blue-400' : 'text-gray-300 hover:bg-[#2b3e52]'
                 }`}
               >
                 <ListTodo className="w-5 h-5 mr-4" />
-                Stocks
+                Preparation
               </button>
             </li>
 
@@ -369,10 +369,10 @@ export default function Dashboard() {
             </div>
           )}
 
-          {activeMenu === 'stocks' && (
+          {activeMenu === 'Preparation' && (
             <div className="p-8 bg-[#eef1f8] min-h-full">
-                <h2 className="text-3xl font-bold text-gray-800 mb-8">Stock Management</h2>
-                <Stocks />
+                <h2 className="text-3xl font-bold text-gray-800 mb-8">Preparation</h2>
+                <Preparation />
             </div>
             )}
 
