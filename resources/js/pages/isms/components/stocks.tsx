@@ -1,0 +1,278 @@
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, Pencil, Loader2, Package } from 'lucide-react';
+import Swal from 'sweetalert2';
+
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
+interface StockItem {
+    id: number;
+    productName: string;
+    count: number;
+    barcode: string;
+}
+
+// ─────────────────────────────────────────────
+// Add / Edit Modal
+// ─────────────────────────────────────────────
+function StockModal({
+    mode,
+    initial,
+    onClose,
+    onSave,
+}: {
+    mode: 'add' | 'edit';
+    initial: Partial<StockItem>;
+    onClose: () => void;
+    onSave: (item: Partial<StockItem>) => Promise<void>;
+}) {
+    const [form, setForm] = useState<Partial<StockItem>>(initial);
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSave = async () => {
+        if (!form.productName?.trim()) {
+            return Swal.fire('แจ้งเตือน', 'กรุณากรอกชื่อสินค้า', 'warning');
+        }
+        setSubmitting(true);
+        await onSave(form);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-7 flex flex-col gap-5">
+                <h2 className="text-xl font-bold text-gray-800">
+                    {mode === 'add' ? '+ เพิ่มสต็อกสินค้า' : 'แก้ไขสต็อกสินค้า'}
+                </h2>
+
+                <div className="flex flex-col gap-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 mb-1">
+                            Product_name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={form.productName ?? ''}
+                            onChange={e => setForm(f => ({ ...f, productName: e.target.value }))}
+                            placeholder="เช่น อีกสิไทย-สามเกลอ 7กรัม"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 mb-1">count</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={form.count ?? 0}
+                            onChange={e => setForm(f => ({ ...f, count: Number(e.target.value) }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 mb-1">Barcode</label>
+                        <input
+                            type="text"
+                            value={form.barcode ?? ''}
+                            onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
+                            placeholder="เช่น BAR-cod-223"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-1">
+                    <button
+                        onClick={onClose}
+                        className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
+                    >
+                        ยกเลิก
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={submitting}
+                        className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-[#33509e] hover:bg-[#2a4180] disabled:opacity-60 transition-colors shadow-md shadow-blue-900/10 active:scale-95"
+                    >
+                        {submitting ? 'กำลังบันทึก...' : mode === 'add' ? 'เพิ่มสินค้า' : 'บันทึกการแก้ไข'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────
+export default function Stocks() {
+    const [stocks, setStocks] = useState<StockItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [editItem, setEditItem] = useState<StockItem | null>(null);
+
+    // 🟢 TODO: เปลี่ยน '/get-stocks' ให้ตรงกับ endpoint จริงของระบบ
+    const fetchStocks = () => {
+        setLoading(true);
+        fetch('/get-stocks', { headers: { Accept: 'application/json' } })
+            .then(res => res.json())
+            .then(data => setStocks(data?.data ?? []))
+            .catch(() => setStocks([]))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => { fetchStocks(); }, []);
+
+    const filteredStocks = stocks.filter(s => {
+        const term = search.trim().toLowerCase();
+        if (!term) return true;
+        return (
+            s.productName.toLowerCase().includes(term) ||
+            s.barcode.toLowerCase().includes(term)
+        );
+    });
+
+    // 🟢 TODO: เปลี่ยน endpoint และ payload ให้ตรงกับ backend จริง
+    const handleAdd = async (form: Partial<StockItem>) => {
+        try {
+            const res = await fetch('/add-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(form),
+            });
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') throw new Error(data.message);
+            await Swal.fire({ icon: 'success', title: 'เพิ่มสต็อกเรียบร้อย', timer: 1500, showConfirmButton: false });
+            setShowAddModal(false);
+            fetchStocks();
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        }
+    };
+
+    const handleEdit = async (form: Partial<StockItem>) => {
+        try {
+            const res = await fetch('/edit-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(form),
+            });
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') throw new Error(data.message);
+            await Swal.fire({ icon: 'success', title: 'อัปเดตเรียบร้อย', timer: 1500, showConfirmButton: false });
+            setEditItem(null);
+            fetchStocks();
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        }
+    };
+
+    return (
+        <div className="bg-transparent h-full relative">
+            {/* Search + Add */}
+            <div className="flex items-center gap-4 mb-6">
+                <div className="relative flex-1">
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="ค้นหาสินค้า หรือ Barcode..."
+                        className="w-full bg-[#ece7f6] border-0 rounded-full pl-5 pr-12 py-3 text-gray-700 outline-none focus:ring-2 focus:ring-blue-400 transition-all"
+                    />
+                    <Search className="w-5 h-5 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2" />
+                </div>
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95 whitespace-nowrap"
+                >
+                    <Plus className="w-5 h-5" /> Add
+                </button>
+            </div>
+
+            {/* Table */}
+            <div className="w-full bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse min-w-[600px]">
+                        <thead>
+                            <tr className="bg-[#f8fafc] text-gray-600 uppercase text-xs tracking-wider border-b border-gray-200">
+                                <th className="text-center font-bold py-4 px-4 w-24">ลำดับ</th>
+                                <th className="text-left font-bold py-4 px-4">Product_name</th>
+                                <th className="text-center font-bold py-4 px-4 w-32">count</th>
+                                <th className="text-left font-bold py-4 px-4 w-48">Barcode</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={4} className="text-center py-12 text-gray-500">
+                                        <Loader2 className="w-8 h-8 animate-spin inline-block mb-3 text-blue-500" />
+                                        <p className="font-medium">กำลังดึงข้อมูล...</p>
+                                    </td>
+                                </tr>
+                            ) : filteredStocks.length === 0 ? (
+                                <tr>
+                                    <td colSpan={4} className="text-center py-12 text-gray-500">
+                                        <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                                            <Package className="w-8 h-8 text-gray-400" />
+                                        </div>
+                                        <p className="font-medium">ไม่พบข้อมูลสต็อกสินค้า</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredStocks.map((item, idx) => (
+                                    <tr
+                                        key={item.id}
+                                        className="text-gray-700 text-sm hover:bg-blue-50/50 transition-colors border-b border-gray-100 last:border-b-0"
+                                    >
+                                        {/* ลำดับ + ปุ่มแก้ไข */}
+                                        <td className="text-center py-4 px-4">
+                                            <span className="flex items-center justify-center gap-2 text-gray-500 font-semibold">
+                                                {idx + 1}
+                                                <button
+                                                    onClick={() => setEditItem(item)}
+                                                    className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors"
+                                                    title="แก้ไข"
+                                                >
+                                                    <Pencil className="w-3.5 h-3.5" />
+                                                </button>
+                                            </span>
+                                        </td>
+                                        <td className="py-4 px-4 font-medium text-gray-800">{item.productName}</td>
+                                        <td className="py-4 px-4 text-center font-bold text-gray-700">{item.count}</td>
+                                        <td className="py-4 px-4">
+                                            <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider border border-blue-100">
+                                                {item.barcode}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Modal เพิ่ม */}
+            {showAddModal && (
+                <StockModal
+                    mode="add"
+                    initial={{ productName: '', count: 0, barcode: '' }}
+                    onClose={() => setShowAddModal(false)}
+                    onSave={handleAdd}
+                />
+            )}
+
+            {/* Modal แก้ไข */}
+            {editItem && (
+                <StockModal
+                    mode="edit"
+                    initial={editItem}
+                    onClose={() => setEditItem(null)}
+                    onSave={handleEdit}
+                />
+            )}
+        </div>
+    );
+}
