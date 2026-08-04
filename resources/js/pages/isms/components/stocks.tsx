@@ -3,6 +3,11 @@ import { Search, Plus, Pencil, Loader2, Package } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 // ─────────────────────────────────────────────
+// Config
+// ─────────────────────────────────────────────
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby7kenkDMGu29EoB9WAqGst5WimqjrehvgWnZCjWXJS2W_KNUoS0mv0_eWTPPyaVig0_Q/exec';
+
+// ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 interface StockItem {
@@ -113,10 +118,9 @@ export default function Stocks() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [editItem, setEditItem] = useState<StockItem | null>(null);
 
-    // 🟢 TODO: เปลี่ยน '/get-stocks' ให้ตรงกับ endpoint จริงของระบบ
     const fetchStocks = () => {
         setLoading(true);
-        fetch('/get-stocks', { headers: { Accept: 'application/json' } })
+        fetch(`${GAS_URL}?action=get-stocks`, { headers: { Accept: 'application/json' } })
             .then(res => res.json())
             .then(data => setStocks(data?.data ?? []))
             .catch(() => setStocks([]))
@@ -134,12 +138,14 @@ export default function Stocks() {
         );
     });
 
-    // 🟢 TODO: เปลี่ยน endpoint และ payload ให้ตรงกับ backend จริง
     const handleAdd = async (form: Partial<StockItem>) => {
         try {
-            const res = await fetch('/add-stock', {
+            // หมายเหตุ: ใช้ Content-Type: text/plain (ไม่ใช่ application/json) เพื่อเลี่ยง
+            // CORS preflight (OPTIONS) ซึ่ง Apps Script Web App จัดการไม่ได้ ตัว body
+            // ยังคงเป็น JSON string เหมือนเดิม ฝั่ง Apps Script ใช้ JSON.parse(e.postData.contents) อ่านได้ปกติ
+            const res = await fetch(`${GAS_URL}?action=add-stock`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(form),
             });
             const data = await res.json();
@@ -154,9 +160,9 @@ export default function Stocks() {
 
     const handleEdit = async (form: Partial<StockItem>) => {
         try {
-            const res = await fetch('/edit-stock', {
+            const res = await fetch(`${GAS_URL}?action=edit-stock`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(form),
             });
             const data = await res.json();
