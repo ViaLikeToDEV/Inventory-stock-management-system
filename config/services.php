@@ -2,8 +2,9 @@
 
 return [
     'tiktokshop_script_url' => env('TIKTOKSHOP_SCRIPT_URL'),
-    'shopee_script_url'     => env('SHOPEE_SCRIPT_URL'),
-    'products_script_url'     => env('PRODUCTS_SCRIPT_URL'),
+    'shopee_script_url' => env('SHOPEE_SCRIPT_URL'),
+    'products_script_url' => env('PRODUCTS_SCRIPT_URL'),
+    'stock_script_url' => env('STOCK_SCRIPT_URL'),
 
     /*
     |--------------------------------------------------------------------------

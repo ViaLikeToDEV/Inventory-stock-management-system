@@ -1,20 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Pencil, Loader2, Package } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Loader2, Package, RefreshCw, Sparkles } from 'lucide-react';
 import Swal from 'sweetalert2';
-
-// ─────────────────────────────────────────────
-// Config
-// ─────────────────────────────────────────────
-const GAS_URL = 'https://script.google.com/macros/s/AKfycby7kenkDMGu29EoB9WAqGst5WimqjrehvgWnZCjWXJS2W_KNUoS0mv0_eWTPPyaVig0_Q/exec';
+import {
+    fetchStocks as fetchStocksAction,
+    addStock as addStockAction,
+    editStock as editStockAction,
+    deleteStock as deleteStockAction,
+    catalog as catalogAction,
+    bulkSyncStock as bulkSyncStockAction,
+} from '../../../actions/App/Http/Controllers/StockController';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 interface StockItem {
-    id: number;
     productName: string;
     count: number;
     barcode: string;
+}
+
+interface CatalogDiffItem extends StockItem {
+    isNew: boolean;
+}
+
+interface CatalogEnrichment {
+    sku: string;
+    variantName: string;
 }
 
 // ─────────────────────────────────────────────
@@ -118,16 +129,39 @@ export default function Stocks() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [editItem, setEditItem] = useState<StockItem | null>(null);
 
+    const [comparing, setComparing] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const [catalogDiff, setCatalogDiff] = useState<CatalogDiffItem[] | null>(null);
+
+    // enrichment ข้อมูล SKU/ตัวเลือกสินค้าจาก SQLite (Shopee catalog) - local only, ไม่ยิงไป GAS และไม่กระทบ Stock sheet
+    const [catalogEnrichment, setCatalogEnrichment] = useState<Record<string, CatalogEnrichment>>({});
+
     const fetchStocks = () => {
         setLoading(true);
-        fetch(`${GAS_URL}?action=get-stocks`, { headers: { Accept: 'application/json' } })
+        fetch(fetchStocksAction.url(), { headers: { Accept: 'application/json' } })
             .then(res => res.json())
             .then(data => setStocks(data?.data ?? []))
             .catch(() => setStocks([]))
             .finally(() => setLoading(false));
     };
 
-    useEffect(() => { fetchStocks(); }, []);
+    const fetchCatalogEnrichment = () => {
+        fetch(catalogAction.url(), { headers: { Accept: 'application/json' } })
+            .then(res => res.json())
+            .then((data: { data?: (StockItem & CatalogEnrichment)[] }) => {
+                const map: Record<string, CatalogEnrichment> = {};
+                (data?.data ?? []).forEach(item => {
+                    map[item.barcode] = { sku: item.sku, variantName: item.variantName };
+                });
+                setCatalogEnrichment(map);
+            })
+            .catch(() => setCatalogEnrichment({}));
+    };
+
+    useEffect(() => {
+        fetchStocks();
+        fetchCatalogEnrichment();
+    }, []);
 
     const filteredStocks = stocks.filter(s => {
         const term = search.trim().toLowerCase();
@@ -140,12 +174,9 @@ export default function Stocks() {
 
     const handleAdd = async (form: Partial<StockItem>) => {
         try {
-            // หมายเหตุ: ใช้ Content-Type: text/plain (ไม่ใช่ application/json) เพื่อเลี่ยง
-            // CORS preflight (OPTIONS) ซึ่ง Apps Script Web App จัดการไม่ได้ ตัว body
-            // ยังคงเป็น JSON string เหมือนเดิม ฝั่ง Apps Script ใช้ JSON.parse(e.postData.contents) อ่านได้ปกติ
-            const res = await fetch(`${GAS_URL}?action=add-stock`, {
+            const res = await fetch(addStockAction.url(), {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
                 body: JSON.stringify(form),
             });
             const data = await res.json();
@@ -160,9 +191,9 @@ export default function Stocks() {
 
     const handleEdit = async (form: Partial<StockItem>) => {
         try {
-            const res = await fetch(`${GAS_URL}?action=edit-stock`, {
+            const res = await fetch(editStockAction.url(), {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
                 body: JSON.stringify(form),
             });
             const data = await res.json();
@@ -172,6 +203,94 @@ export default function Stocks() {
             fetchStocks();
         } catch (err: any) {
             Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        }
+    };
+
+    const handleDelete = async (item: StockItem) => {
+        const confirm = await Swal.fire({
+            icon: 'warning',
+            title: 'ยืนยันการลบ',
+            text: `ต้องการลบสต็อก "${item.productName}" ใช่หรือไม่?`,
+            showCancelButton: true,
+            confirmButtonText: 'ลบ',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#dc2626',
+        });
+        if (!confirm.isConfirmed) return;
+
+        try {
+            const res = await fetch(deleteStockAction.url(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ barcode: item.barcode }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') throw new Error(data.message);
+            await Swal.fire({ icon: 'success', title: 'ลบสต็อกเรียบร้อย', timer: 1500, showConfirmButton: false });
+            fetchStocks();
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        }
+    };
+
+    const handleCompareCatalog = async () => {
+        setComparing(true);
+        try {
+            const res = await fetch(catalogAction.url(), { headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            const catalogItems: StockItem[] = data?.data ?? [];
+
+            const stockByBarcode = new Map(stocks.map(s => [s.barcode, s]));
+
+            const diff = catalogItems.reduce<CatalogDiffItem[]>((acc, catalogItem) => {
+                const existing = stockByBarcode.get(catalogItem.barcode);
+
+                if (!existing) {
+                    acc.push({ barcode: catalogItem.barcode, productName: catalogItem.productName, count: 0, isNew: true });
+                } else if (existing.productName !== catalogItem.productName) {
+                    acc.push({ barcode: catalogItem.barcode, productName: catalogItem.productName, count: existing.count, isNew: false });
+                }
+
+                return acc;
+            }, []);
+
+            setCatalogDiff(diff);
+
+            if (diff.length === 0) {
+                Swal.fire({ icon: 'info', title: 'สต็อกตรงกับ Catalog อยู่แล้ว', timer: 1800, showConfirmButton: false });
+            }
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        } finally {
+            setComparing(false);
+        }
+    };
+
+    const handleDiffCountChange = (barcode: string, count: number) => {
+        setCatalogDiff(diff => diff && diff.map(item => (item.barcode === barcode ? { ...item, count } : item)));
+    };
+
+    const handleSaveCatalogDiff = async () => {
+        if (!catalogDiff || catalogDiff.length === 0) return;
+
+        setSyncing(true);
+        try {
+            const res = await fetch(bulkSyncStockAction.url(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({
+                    items: catalogDiff.map(({ barcode, productName, count }) => ({ barcode, productName, count })),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') throw new Error(data.message);
+            await Swal.fire({ icon: 'success', title: 'ซิงก์สต็อกเรียบร้อย', timer: 1500, showConfirmButton: false });
+            setCatalogDiff(null);
+            fetchStocks();
+        } catch (err: any) {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -190,12 +309,91 @@ export default function Stocks() {
                     <Search className="w-5 h-5 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2" />
                 </div>
                 <button
+                    onClick={handleCompareCatalog}
+                    disabled={comparing}
+                    className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold px-6 py-3 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-60 whitespace-nowrap"
+                >
+                    {comparing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                    เทียบ Catalog Shopee
+                </button>
+                <button
                     onClick={() => setShowAddModal(true)}
                     className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95 whitespace-nowrap"
                 >
                     <Plus className="w-5 h-5" /> Add
                 </button>
             </div>
+
+            {/* Catalog diff review panel */}
+            {catalogDiff && catalogDiff.length > 0 && (
+                <div className="w-full bg-amber-50 border border-amber-200 rounded-xl overflow-hidden shadow-sm mb-6">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-amber-200">
+                        <h3 className="flex items-center gap-2 font-bold text-amber-800">
+                            <Sparkles className="w-5 h-5" />
+                            พบข้อมูลจาก Catalog ที่ไม่ตรงกับสต็อก ({catalogDiff.length})
+                        </h3>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setCatalogDiff(null)}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={handleSaveCatalogDiff}
+                                disabled={syncing}
+                                className="px-6 py-2 rounded-lg text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 transition-colors active:scale-95"
+                            >
+                                {syncing ? 'กำลังบันทึก...' : 'Save'}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse min-w-[600px]">
+                            <thead>
+                                <tr className="bg-amber-100/60 text-amber-800 uppercase text-xs tracking-wider">
+                                    <th className="text-left font-bold py-3 px-4 w-28">สถานะ</th>
+                                    <th className="text-left font-bold py-3 px-4">Product_name</th>
+                                    <th className="text-center font-bold py-3 px-4 w-32">count</th>
+                                    <th className="text-left font-bold py-3 px-4 w-48">Barcode</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {catalogDiff.map(item => (
+                                    <tr key={item.barcode} className="text-sm border-b border-amber-100 last:border-b-0">
+                                        <td className="py-3 px-4">
+                                            {item.isNew ? (
+                                                <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded-md text-xs font-bold">NewData</span>
+                                            ) : (
+                                                <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md text-xs font-bold">Updated</span>
+                                            )}
+                                        </td>
+                                        <td className="py-3 px-4 font-medium text-gray-800">{item.productName}</td>
+                                        <td className="py-3 px-4 text-center">
+                                            {item.isNew ? (
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={item.count}
+                                                    onChange={e => handleDiffCountChange(item.barcode, Number(e.target.value))}
+                                                    className="w-20 text-center border border-amber-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all"
+                                                />
+                                            ) : (
+                                                <span className="font-bold text-gray-700">{item.count}</span>
+                                            )}
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <span className="bg-white text-amber-700 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider border border-amber-200">
+                                                {item.barcode}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             {/* Table */}
             <div className="w-full bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
@@ -227,33 +425,53 @@ export default function Stocks() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredStocks.map((item, idx) => (
-                                    <tr
-                                        key={item.id}
-                                        className="text-gray-700 text-sm hover:bg-blue-50/50 transition-colors border-b border-gray-100 last:border-b-0"
-                                    >
-                                        {/* ลำดับ + ปุ่มแก้ไข */}
-                                        <td className="text-center py-4 px-4">
-                                            <span className="flex items-center justify-center gap-2 text-gray-500 font-semibold">
-                                                {idx + 1}
-                                                <button
-                                                    onClick={() => setEditItem(item)}
-                                                    className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors"
-                                                    title="แก้ไข"
-                                                >
-                                                    <Pencil className="w-3.5 h-3.5" />
-                                                </button>
-                                            </span>
-                                        </td>
-                                        <td className="py-4 px-4 font-medium text-gray-800">{item.productName}</td>
-                                        <td className="py-4 px-4 text-center font-bold text-gray-700">{item.count}</td>
-                                        <td className="py-4 px-4">
-                                            <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider border border-blue-100">
-                                                {item.barcode}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
+                                filteredStocks.map((item, idx) => {
+                                    const enrichment = catalogEnrichment[item.barcode];
+
+                                    return (
+                                        <tr
+                                            key={item.barcode}
+                                            className="text-gray-700 text-sm hover:bg-blue-50/50 transition-colors border-b border-gray-100 last:border-b-0"
+                                        >
+                                            {/* ลำดับ + ปุ่มแก้ไข */}
+                                            <td className="text-center py-4 px-4">
+                                                <span className="flex items-center justify-center gap-2 text-gray-500 font-semibold">
+                                                    {idx + 1}
+                                                    <button
+                                                        onClick={() => setEditItem(item)}
+                                                        className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors"
+                                                        title="แก้ไข"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(item)}
+                                                        className="p-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-md transition-colors"
+                                                        title="ลบ"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                <div className="font-medium text-gray-800">{item.productName}</div>
+                                                {enrichment && (
+                                                    <div className="text-xs text-gray-400 mt-0.5">
+                                                        {enrichment.sku && <span className="font-mono">{enrichment.sku}</span>}
+                                                        {enrichment.sku && enrichment.variantName && ' · '}
+                                                        {enrichment.variantName}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4 text-center font-bold text-gray-700">{item.count}</td>
+                                            <td className="py-4 px-4">
+                                                <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider border border-blue-100">
+                                                    {item.barcode}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
