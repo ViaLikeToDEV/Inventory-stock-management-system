@@ -4,17 +4,14 @@ import { CheckCircle2, Folder, X } from 'lucide-react';
 
 import { ShopeeVerifyPage } from '@components/ShopeeVerifyPage';
 import { UniversalPackScan } from '@components/universalpackscan';
+import { UploadQueuePanel, type UploadState } from '@components/UploadQueuePanel';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 type Platform = 'tiktok' | 'shopee';
-type UploadState = {
-    status: 'uploading' | 'success' | 'error';
-    progress: number;
-    blob: Blob;
-    fileName: string;
-};
+
+const GAS_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby7pmxLZVsHwyDi_Btv3Qd1ANqV1Rd2Qr4W0YfhKfSJ6_SgCclXQV48nPCeDXXYSYtxuQ/exec';
 
 interface ShopeeProduct {
     sku: string;
@@ -47,6 +44,8 @@ export default function Packing() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const dismissTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const uploadXhrRef = useRef<Record<string, XMLHttpRequest>>({});
     const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedDevice, setSelectedDevice] = useState('');
     const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -123,21 +122,107 @@ export default function Packing() {
         });
     };
 
+    const patchUpload = (orderId: string, patch: Partial<UploadState>) => {
+        setUploadQueue(prev => (prev[orderId] ? { ...prev, [orderId]: { ...prev[orderId], ...patch } } : prev));
+    };
+
+    /**
+     * อัปโหลดคลิปขึ้น Google Drive ผ่าน Apps Script
+     * ใช้ XMLHttpRequest แทน fetch เพราะ fetch รายงานความคืบหน้าตอนอัปโหลดไม่ได้
+     */
     const uploadToGoogleDriveBackground = async (blob: Blob, fileName: string, orderId: string) => {
+        const markError = () => {
+            delete uploadXhrRef.current[orderId];
+            patchUpload(orderId, { status: 'error' });
+        };
+
         try {
+            patchUpload(orderId, { status: 'uploading', phase: 'encoding', progress: 0 });
             const base64 = await blobToBase64(blob);
-            const response = await fetch("https://script.google.com/macros/s/AKfycby7pmxLZVsHwyDi_Btv3Qd1ANqV1Rd2Qr4W0YfhKfSJ6_SgCclXQV48nPCeDXXYSYtxuQ/exec", {
-                method: "POST", mode: "cors", headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ fileName, video: base64 })
-            });
-            const result = await response.json();
-            if (result.status === 'success') {
-                setUploadQueue(prev => ({ ...prev, [orderId]: { ...prev[orderId], status: 'success', progress: 100 } }));
-            } else throw new Error("Upload response error");
+
+            patchUpload(orderId, { phase: 'uploading', progress: 0 });
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', GAS_UPLOAD_URL, true);
+            xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+            xhr.timeout = 5 * 60 * 1000; // 5 นาที กันค้าง 'uploading' ตลอดไปถ้า GAS ไม่ตอบ
+
+            // ห้ามผูก listener กับ xhr.upload (onprogress/onload) — จะทำให้ browser บังคับส่ง CORS preflight (OPTIONS)
+            // ซึ่ง Google Apps Script ตอบไม่ได้ (405 เสมอ) อัปโหลดจะพังทันทีด้วย CORS error
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
+                    patchUpload(orderId, { phase: 'processing', progress: 100 });
+                }
+            };
+
+            xhr.onload = () => {
+                delete uploadXhrRef.current[orderId];
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    if (result.status !== 'success') throw new Error('Upload response error');
+                    patchUpload(orderId, { status: 'success', phase: 'processing', progress: 100 });
+                } catch (error) {
+                    console.error('Upload response error:', error);
+                    markError();
+                }
+            };
+
+            xhr.onerror = markError;
+            xhr.onabort = markError;
+            xhr.ontimeout = markError;
+
+            uploadXhrRef.current[orderId] = xhr;
+            xhr.send(JSON.stringify({ fileName, video: base64 }));
         } catch (error) {
-            setUploadQueue(prev => ({ ...prev, [orderId]: { ...prev[orderId], status: 'error' } }));
+            console.error('Error uploading video:', error);
+            markError();
         }
     };
+
+    const handleRetryUpload = (orderId: string) => {
+        const item = uploadQueue[orderId];
+        if (!item) return;
+        uploadToGoogleDriveBackground(item.blob, item.fileName, orderId);
+    };
+
+    const handleDismissUpload = (orderId: string) => {
+        const runningXhr = uploadXhrRef.current[orderId];
+        if (runningXhr) {
+            delete uploadXhrRef.current[orderId];
+            runningXhr.abort();
+        }
+
+        setUploadQueue(prev => {
+            const { [orderId]: _removed, ...rest } = prev;
+            return rest;
+        });
+    };
+
+    // 📌 การ์ดที่อัปโหลดสำเร็จจะหายเองใน 4 วินาที ส่วนตัวที่ล้มเหลวค้างไว้ให้กดลองใหม่
+    useEffect(() => {
+        const timers = dismissTimersRef.current;
+
+        Object.entries(uploadQueue).forEach(([orderId, item]) => {
+            if (item.status !== 'success' || timers[orderId]) return;
+            timers[orderId] = setTimeout(() => {
+                delete timers[orderId];
+                handleDismissUpload(orderId);
+            }, 4000);
+        });
+
+        Object.keys(timers).forEach((orderId) => {
+            if (uploadQueue[orderId]?.status === 'success') return;
+            clearTimeout(timers[orderId]);
+            delete timers[orderId];
+        });
+    }, [uploadQueue]);
+
+    useEffect(() => {
+        const timers = dismissTimersRef.current;
+        return () => {
+            Object.values(timers).forEach(clearTimeout);
+        };
+    }, []);
 
     // 📌 แจ้งเตือนสำเร็จสไตล์พรีเมียม ขอบมนขนาดใหญ่เข้าชุดเดิม
     const showSuccessAlert = async () => {
@@ -243,7 +328,7 @@ export default function Packing() {
                 const localSaveSuccess = await saveVideoLocally(blob, fileName);
 
                 if (localSaveSuccess) {
-                    setUploadQueue(prev => ({ ...prev, [targetOrderId]: { status: 'uploading', progress: 0, blob, fileName } }));
+                    setUploadQueue(prev => ({ ...prev, [targetOrderId]: { status: 'uploading', phase: 'encoding', progress: 0, blob, fileName } }));
                     uploadToGoogleDriveBackground(blob, fileName, targetOrderId);
                 }
                 recordedChunksRef.current = [];
@@ -300,6 +385,8 @@ export default function Packing() {
                         />
                     </div>
                 </div>
+
+                <UploadQueuePanel queue={uploadQueue} onRetry={handleRetryUpload} onDismiss={handleDismissUpload} />
             </div>
         );
     }
@@ -350,6 +437,8 @@ export default function Packing() {
                 onOrderFound={(order) => setShopeeOrder(order)}
                 saveDirectoryHandle={saveDirectoryHandle}
             />
+
+            <UploadQueuePanel queue={uploadQueue} onRetry={handleRetryUpload} onDismiss={handleDismissUpload} />
         </div>
     );
 }
