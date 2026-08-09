@@ -50,6 +50,24 @@ export default function Product() {
         );
     }, [products]);
 
+    // 🟢 เหมือน availableOriginSkus แต่ใช้ sku ล่าสุดจาก editForm (ที่ยังไม่ได้ save) แทนของ product
+    // ตัวเอง กัน bundle ในสินค้าเดียวกันไปอ้างอิง sku เก่าที่กำลังถูกแก้ไข/เปลี่ยนชื่ออยู่ในฟอร์มเดียวกัน
+    const editAvailableOriginSkus = useMemo(() => {
+        if (!editForm) return availableOriginSkus;
+
+        const otherProducts = products.filter(p => p.id !== editForm.id).flatMap(p =>
+            p.variants
+                .filter(v => v.is_active !== false && (!v.bundle || v.bundle.trim() === '' || v.bundle === '[]'))
+                .map(v => ({ sku: v.sku, productName: p.productName, variantName: v.variantName }))
+        );
+
+        const ownVariants = editForm.variants
+            .filter(v => v.is_active !== false && (!v.bundle || v.bundle.trim() === '' || v.bundle === '[]'))
+            .map(v => ({ sku: v.sku, productName: editForm.productName, variantName: v.variantName }));
+
+        return [...otherProducts, ...ownVariants];
+    }, [products, editForm]);
+
     const allSkusInSystem = useMemo(() => {
         return products.flatMap(p => p.variants.map(v => v.sku.trim().toLowerCase()));
     }, [products]);
@@ -126,6 +144,32 @@ export default function Product() {
                 text: `รหัส SKU "${duplicateSku.sku}" ไปซ้ำกับสินค้าตัวอื่นในระบบ ไม่สามารถเพิ่มได้`,
                 confirmButtonColor: '#ef4444'
             });
+        }
+
+        // 🟢 กัน Bundle อ้างอิง origin_sku ที่จะไม่มีอยู่จริงหลัง save นี้ (เช่น sku ต้นทางถูกเปลี่ยน/พิมพ์ผิดระหว่างแก้ไข)
+        const finalSkuSet = new Set<string>();
+        products.forEach(p => {
+            if (p.id === editForm.id) return;
+            p.variants.forEach(v => { if (v.is_active !== false) finalSkuSet.add(v.sku.trim()); });
+        });
+        activeVariants.forEach(v => finalSkuSet.add(v.sku.trim()));
+
+        for (const v of activeVariants) {
+            if (!v.bundle || v.bundle.trim() === '') continue;
+
+            let items;
+            try { items = JSON.parse(v.bundle); } catch { continue; }
+            if (!Array.isArray(items)) continue;
+
+            const brokenRef = items.find((item: any) => item.type === 'origin_sku' && item.sku && !finalSkuSet.has(String(item.sku).trim()));
+            if (brokenRef) {
+                return Swal.fire({
+                    icon: 'error',
+                    title: 'Bundle อ้างอิง SKU ที่ไม่มีอยู่จริง',
+                    text: `ตัวเลือก "${v.variantName}" (${v.sku}) มี Bundle อ้างอิง SKU "${brokenRef.sku}" ที่ไม่พบในระบบ กรุณาลบหรือแก้ไขรายการนี้ใน Bundle ก่อนบันทึก`,
+                    confirmButtonColor: '#ef4444',
+                });
+            }
         }
 
         setEditSubmitting(true);
@@ -225,7 +269,7 @@ export default function Product() {
                 <ProductEditModal
                     editForm={editForm}
                     setEditForm={setEditForm}
-                    availableOriginSkus={availableOriginSkus}
+                    availableOriginSkus={editAvailableOriginSkus}
                     onClose={() => setEditForm(null)}
                     onSave={handleSaveFullEdit}
                     isSubmitting={editSubmitting}

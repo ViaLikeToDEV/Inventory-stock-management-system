@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Home, ClipboardList, Package, Loader2, FileSearchCorner, ListTodo, Warehouse} from 'lucide-react';
+import { Home, ClipboardList, Package, Loader2, FileSearchCorner, ListTodo, Warehouse, AlertTriangle} from 'lucide-react';
 import Swal from 'sweetalert2';
 import Packing from './packing';
 import UniversalPack from '@components/universalpack';
@@ -17,13 +17,16 @@ export function DashStat() {
     tiktok: {packed: 0, total: 0}
     });
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     const fetchSummary = async () => {
+        setLoading(true);
         try {
         const response = await fetch("/getSummary", {
             method: "POST", // ถ้า Route แกเป็น GET อย่าลืมไปเปลี่ยนนะ
-            headers: { Accept: "application/json" },
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ date: selectedDate }),
         });
 
         const data = await response.json();
@@ -59,7 +62,7 @@ export function DashStat() {
     };
 
     fetchSummary();
-    }, []);
+    }, [selectedDate]);
 
     // คำนวณตัวที่ยังไม่สำเร็จ
     const pendingTotal = stats.total - stats.packed;
@@ -68,7 +71,16 @@ export function DashStat() {
 
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-end">
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
+        />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
       {/* Card 1: ออเดอร์ทั้งหมด */}
       <div className="bg-white rounded-2xl shadow-sm p-6 flex flex-col justify-between h-44 relative overflow-hidden group hover:shadow-md transition-all duration-200">
         {loading ? (
@@ -136,7 +148,12 @@ export function DashStat() {
         ) : (
           <>
             <div className="flex items-start justify-between">
-              <span className="text-xl font-bold text-gray-800">ยังไม่สำเร็จ</span>
+              <span className="flex items-center gap-2 text-xl font-bold text-gray-800">
+                ยังไม่สำเร็จ
+                {pendingTotal > 0 && (
+                  <AlertTriangle className="w-5 h-5 text-[#ef4444]" />
+                )}
+              </span>
               <span className="text-5xl font-extrabold text-[#ef4444] tracking-tight">
                 {pendingTotal > 0 ? pendingTotal : 0}
               </span>
@@ -156,6 +173,7 @@ export function DashStat() {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

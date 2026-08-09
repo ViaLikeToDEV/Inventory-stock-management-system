@@ -31,5 +31,6 @@ Route::prefix('stock-api')->group(function () {
         Route::post('/delete-stock', 'deleteStock')->name('stock-delete');
         Route::get('/catalog', 'catalog')->name('stock-catalog');
         Route::post('/bulk-sync', 'bulkSyncStock')->name('stock-bulk-sync');
+        Route::get('/integrity-issues', 'integrityIssues')->name('stock-integrity-issues');
     });
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Pencil, Trash2, Loader2, Package, RefreshCw, Sparkles } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Loader2, Package, RefreshCw, Sparkles, AlertTriangle } from 'lucide-react';
 import Swal from 'sweetalert2';
 import {
     fetchStocks as fetchStocksAction,
@@ -8,6 +8,7 @@ import {
     deleteStock as deleteStockAction,
     catalog as catalogAction,
     bulkSyncStock as bulkSyncStockAction,
+    integrityIssues as integrityIssuesAction,
 } from '../../../actions/App/Http/Controllers/StockController';
 
 // ─────────────────────────────────────────────
@@ -21,11 +22,25 @@ interface StockItem {
 
 interface CatalogDiffItem extends StockItem {
     isNew: boolean;
+    isBundleComponent: boolean;
+    sku: string;
+    variantName: string;
 }
 
 interface CatalogEnrichment {
     sku: string;
     variantName: string;
+}
+
+interface CatalogApiItem extends StockItem {
+    sku: string;
+    variantName: string;
+}
+
+interface IntegrityIssue {
+    type: 'broken_origin_ref' | 'barcode_name_conflict';
+    message: string;
+    [key: string]: unknown;
 }
 
 // ─────────────────────────────────────────────
@@ -133,6 +148,11 @@ export default function Stocks() {
     const [syncing, setSyncing] = useState(false);
     const [catalogDiff, setCatalogDiff] = useState<CatalogDiffItem[] | null>(null);
 
+    const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
+    const [integrityLoading, setIntegrityLoading] = useState(false);
+
+    const [deletingBarcode, setDeletingBarcode] = useState<string | null>(null);
+
     // enrichment ข้อมูล SKU/ตัวเลือกสินค้าจาก SQLite (Shopee catalog) - local only, ไม่ยิงไป GAS และไม่กระทบ Stock sheet
     const [catalogEnrichment, setCatalogEnrichment] = useState<Record<string, CatalogEnrichment>>({});
 
@@ -158,9 +178,19 @@ export default function Stocks() {
             .catch(() => setCatalogEnrichment({}));
     };
 
+    const fetchIntegrityIssues = () => {
+        setIntegrityLoading(true);
+        fetch(integrityIssuesAction.url(), { headers: { Accept: 'application/json' } })
+            .then(res => res.json())
+            .then(data => setIntegrityIssues(data?.data ?? []))
+            .catch(() => setIntegrityIssues([]))
+            .finally(() => setIntegrityLoading(false));
+    };
+
     useEffect(() => {
         fetchStocks();
         fetchCatalogEnrichment();
+        fetchIntegrityIssues();
     }, []);
 
     const filteredStocks = stocks.filter(s => {
@@ -218,6 +248,7 @@ export default function Stocks() {
         });
         if (!confirm.isConfirmed) return;
 
+        setDeletingBarcode(item.barcode);
         try {
             const res = await fetch(deleteStockAction.url(), {
                 method: 'POST',
@@ -230,6 +261,8 @@ export default function Stocks() {
             fetchStocks();
         } catch (err: any) {
             Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        } finally {
+            setDeletingBarcode(null);
         }
     };
 
@@ -238,17 +271,34 @@ export default function Stocks() {
         try {
             const res = await fetch(catalogAction.url(), { headers: { Accept: 'application/json' } });
             const data = await res.json();
-            const catalogItems: StockItem[] = data?.data ?? [];
+            const catalogItems: CatalogApiItem[] = data?.data ?? [];
 
             const stockByBarcode = new Map(stocks.map(s => [s.barcode, s]));
 
             const diff = catalogItems.reduce<CatalogDiffItem[]>((acc, catalogItem) => {
                 const existing = stockByBarcode.get(catalogItem.barcode);
+                const isBundleComponent = !catalogItem.sku;
 
                 if (!existing) {
-                    acc.push({ barcode: catalogItem.barcode, productName: catalogItem.productName, count: 0, isNew: true });
+                    acc.push({
+                        barcode: catalogItem.barcode,
+                        productName: catalogItem.productName,
+                        count: 0,
+                        isNew: true,
+                        isBundleComponent,
+                        sku: catalogItem.sku,
+                        variantName: catalogItem.variantName,
+                    });
                 } else if (existing.productName !== catalogItem.productName) {
-                    acc.push({ barcode: catalogItem.barcode, productName: catalogItem.productName, count: existing.count, isNew: false });
+                    acc.push({
+                        barcode: catalogItem.barcode,
+                        productName: catalogItem.productName,
+                        count: existing.count,
+                        isNew: false,
+                        isBundleComponent,
+                        sku: catalogItem.sku,
+                        variantName: catalogItem.variantName,
+                    });
                 }
 
                 return acc;
@@ -310,7 +360,7 @@ export default function Stocks() {
                 </div>
                 <button
                     onClick={handleCompareCatalog}
-                    disabled={comparing}
+                    disabled={comparing || syncing}
                     className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold px-6 py-3 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-60 whitespace-nowrap"
                 >
                     {comparing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
@@ -318,11 +368,39 @@ export default function Stocks() {
                 </button>
                 <button
                     onClick={() => setShowAddModal(true)}
-                    className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95 whitespace-nowrap"
+                    disabled={comparing || syncing}
+                    className="flex items-center gap-2 bg-[#33509e] hover:bg-[#2a4180] text-white font-bold px-8 py-3 rounded-xl shadow-md shadow-blue-900/10 transition-all active:scale-95 disabled:opacity-60 whitespace-nowrap"
                 >
                     <Plus className="w-5 h-5" /> Add
                 </button>
             </div>
+
+            {/* Data integrity panel */}
+            {!integrityLoading && integrityIssues.length > 0 && (
+                <div className="w-full bg-red-50 border border-red-200 rounded-xl overflow-hidden shadow-sm mb-6">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-red-200">
+                        <h3 className="flex items-center gap-2 font-bold text-red-800">
+                            <AlertTriangle className="w-5 h-5" />
+                            พบปัญหาความสมบูรณ์ของข้อมูล Bundle ({integrityIssues.length})
+                        </h3>
+                        <button
+                            onClick={fetchIntegrityIssues}
+                            disabled={integrityLoading}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-red-700 border border-red-200 bg-white hover:bg-red-50 disabled:opacity-60 transition-colors"
+                        >
+                            {integrityLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                            ตรวจสอบใหม่
+                        </button>
+                    </div>
+                    <ul className="divide-y divide-red-100">
+                        {integrityIssues.map((issue, idx) => (
+                            <li key={idx} className="px-5 py-3 text-sm text-red-800">
+                                {issue.message}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {/* Catalog diff review panel */}
             {catalogDiff && catalogDiff.length > 0 && (
@@ -335,7 +413,8 @@ export default function Stocks() {
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setCatalogDiff(null)}
-                                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                                disabled={syncing}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 transition-colors"
                             >
                                 ยกเลิก
                             </button>
@@ -368,7 +447,21 @@ export default function Stocks() {
                                                 <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md text-xs font-bold">Updated</span>
                                             )}
                                         </td>
-                                        <td className="py-3 px-4 font-medium text-gray-800">{item.productName}</td>
+                                        <td className="py-3 px-4 font-medium text-gray-800">
+                                            {item.productName}
+                                            {item.isBundleComponent && (
+                                                <span className="ml-2 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md text-xs font-bold align-middle">
+                                                    ของแถม/บันเดิล
+                                                </span>
+                                            )}
+                                            {(item.sku || item.variantName) && (
+                                                <div className="text-xs text-gray-400 mt-0.5 font-normal">
+                                                    {item.sku && <span className="font-mono">{item.sku}</span>}
+                                                    {item.sku && item.variantName && ' · '}
+                                                    {item.variantName}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4 text-center">
                                             {item.isNew ? (
                                                 <input
@@ -439,17 +532,23 @@ export default function Stocks() {
                                                     {idx + 1}
                                                     <button
                                                         onClick={() => setEditItem(item)}
-                                                        className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md transition-colors"
+                                                        disabled={deletingBarcode === item.barcode}
+                                                        className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-md disabled:opacity-50 disabled:pointer-events-none transition-colors"
                                                         title="แก้ไข"
                                                     >
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(item)}
-                                                        className="p-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-md transition-colors"
+                                                        disabled={deletingBarcode === item.barcode}
+                                                        className="p-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-md disabled:opacity-50 disabled:pointer-events-none transition-colors"
                                                         title="ลบ"
                                                     >
-                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                        {deletingBarcode === item.barcode ? (
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        )}
                                                     </button>
                                                 </span>
                                             </td>

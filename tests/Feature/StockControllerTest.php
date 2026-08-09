@@ -88,6 +88,110 @@ it('returns the active variant catalog from sqlite without calling the GAS scrip
     Http::assertNothingSent();
 });
 
+it('merges dummy_item bundle components from active variants into the catalog', function () {
+    Product::create(['product_id' => 1, 'product_name' => 'Real Product', 'is_active' => true]);
+    Product::create(['product_id' => 2, 'product_name' => 'Bundle Product', 'is_active' => true]);
+
+    Variant::create([
+        'sku' => 'SKU-001',
+        'product_id' => 1,
+        'variant_name' => 'Default',
+        'barcode' => '1234567890123',
+        'is_active' => true,
+    ]);
+
+    Variant::create([
+        'sku' => 'SKU-BUNDLE',
+        'product_id' => 2,
+        'variant_name' => 'Bundle Set',
+        'barcode' => null,
+        'is_active' => true,
+        'bundle' => json_encode([
+            ['type' => 'origin_sku', 'sku' => 'SKU-001', 'quantity' => 1],
+            ['type' => 'dummy_item', 'quantity' => 1, 'barcode' => 'DUMMY-001', 'display_product_name' => 'Free Rice', 'display_variant' => 'Rice Bag'],
+        ]),
+    ]);
+
+    Variant::create([
+        'sku' => 'SKU-INACTIVE-BUNDLE',
+        'product_id' => 2,
+        'variant_name' => 'Old Bundle',
+        'barcode' => null,
+        'is_active' => false,
+        'bundle' => json_encode([
+            ['type' => 'dummy_item', 'quantity' => 1, 'barcode' => 'DUMMY-INACTIVE', 'display_product_name' => 'Ghost Item', 'display_variant' => 'Ghost'],
+        ]),
+    ]);
+
+    Http::fake();
+
+    $response = $this->getJson('/api/stock-api/catalog');
+
+    $response->assertOk();
+    $data = collect($response->json('data'));
+
+    expect($data->pluck('barcode'))->toContain('1234567890123', 'DUMMY-001')
+        ->not->toContain('DUMMY-INACTIVE');
+
+    $dummyRow = $data->firstWhere('barcode', 'DUMMY-001');
+    expect($dummyRow['productName'])->toBe('Free Rice');
+    expect($dummyRow['sku'])->toBe('');
+});
+
+it('reports broken origin_sku references among active variants as an integrity issue', function () {
+    Product::create(['product_id' => 1, 'product_name' => 'Bundle Product', 'is_active' => true]);
+
+    Variant::create([
+        'sku' => 'SKU-BROKEN',
+        'product_id' => 1,
+        'variant_name' => 'Broken Bundle',
+        'barcode' => null,
+        'is_active' => true,
+        'bundle' => json_encode([
+            ['type' => 'origin_sku', 'sku' => 'DOES-NOT-EXIST', 'quantity' => 1],
+        ]),
+    ]);
+
+    $response = $this->getJson('/api/stock-api/integrity-issues');
+
+    $response->assertOk();
+    $issues = collect($response->json('data'));
+
+    expect($issues->firstWhere('type', 'broken_origin_ref')['referencedSku'])->toBe('DOES-NOT-EXIST');
+});
+
+it('does not flag dummy_item barcodes with differing display names across bundles, since those are packer-facing labels only', function () {
+    Product::create(['product_id' => 1, 'product_name' => 'Bundle A', 'is_active' => true]);
+    Product::create(['product_id' => 2, 'product_name' => 'Bundle B', 'is_active' => true]);
+
+    Variant::create([
+        'sku' => 'SKU-BUNDLE-A',
+        'product_id' => 1,
+        'variant_name' => 'Bundle A',
+        'barcode' => null,
+        'is_active' => true,
+        'bundle' => json_encode([
+            ['type' => 'dummy_item', 'quantity' => 1, 'barcode' => 'SHARED-DUMMY', 'display_product_name' => 'Rice', 'display_variant' => 'Small'],
+        ]),
+    ]);
+
+    Variant::create([
+        'sku' => 'SKU-BUNDLE-B',
+        'product_id' => 2,
+        'variant_name' => 'Bundle B',
+        'barcode' => null,
+        'is_active' => true,
+        'bundle' => json_encode([
+            ['type' => 'dummy_item', 'quantity' => 1, 'barcode' => 'SHARED-DUMMY', 'display_product_name' => 'Rice', 'display_variant' => 'Large'],
+        ]),
+    ]);
+
+    $response = $this->getJson('/api/stock-api/integrity-issues');
+
+    $response->assertOk();
+    expect($response->json('data'))->toBe([]);
+});
+
 it('proxies delete-stock to the stock GAS script with the action injected', function () {
     config(['services.stock_script_url' => 'https://example.test/stock-gas']);
 

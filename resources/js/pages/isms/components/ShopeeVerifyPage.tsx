@@ -142,7 +142,7 @@ useEffect(() => {
             return;
         }
 
-        stopRecording(true);
+
         import('sweetalert2').then(async (Swal) => {
             Swal.default.fire({
                 title: 'กำลังบันทึกข้อมูลออเดอร์...',
@@ -159,6 +159,7 @@ useEffect(() => {
                 });
 
                 if (response.data?.status === 'success') {
+                    stopRecording(true);
                     await Swal.default.fire({
                         icon: 'success',
                         title: `<span style="font-size: 20px; font-weight: 900;">${response.data?.message || 'บันทึกสำเร็จ'}</span>`,
