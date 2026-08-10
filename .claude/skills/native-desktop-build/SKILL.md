@@ -88,3 +88,35 @@ Check logs at `%APPDATA%\<app-slug>\storage\logs\laravel-*.log` for anything une
 - **Duplicate route names break `route:cache`.** Production builds run `optimize` (includes `route:cache`) on first boot; dev mode never caches routes so a duplicate `->name(...)` across two routes goes unnoticed until packaged. If a packaged app never shows a window and the log has `LogicException: ... Another route has already been assigned name [...]`, that's the cause — fix the duplicate in `routes/api.php` or `routes/web.php`.
 - **Icons**: `public/icon.ico` must be at least 256x256 or `electron-builder` refuses to build (`⨯ image ... must be at least 256x256`). Current icons are a low-res placeholder upscaled from `apple-touch-icon.png` — replace with real 512x512 art in `public/icon.png` + `public/icon.ico` when better assets exist; `InstallsAppIcon` trait picks them up automatically, no code change needed.
 - **Code signing / SmartScreen**: intentionally skipped (internal staff tool, one-time click-through acceptable). `NATIVEPHP_UPDATER_ENABLED=false` also intentional — no update provider configured.
+
+## Optional: manual signtool step to quiet SmartScreen (self-signed, free)
+
+`native:build` itself has no plain-cert signing option — the vendor's `electron-builder.mjs` (`vendor/nativephp/desktop/resources/electron/electron-builder.mjs`) only wires `NATIVEPHP_AZURE_*` env vars for **Azure Trusted Signing** (paid). A self-signed cert must be applied by hand, after `native:build` finishes, and only helps if the cert is also imported into each staff PC's Trusted Root store — self-signing alone does not remove the SmartScreen warning, only local trust does.
+
+One-time cert setup (run once, keep the `.pfx` safe):
+
+```powershell
+$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Goodfriends Food" `
+    -CertStoreLocation "Cert:\CurrentUser\My" -KeyUsage DigitalSignature -FriendlyName "GFF Internal Code Signing" `
+    -NotAfter (Get-Date).AddYears(5)
+$pwd = ConvertTo-SecureString -String "<choose-a-password>" -Force -AsPlainText
+Export-PfxCertificate -Cert $cert -FilePath "gff-codesign.pfx" -Password $pwd
+Export-Certificate -Cert $cert -FilePath "gff-codesign.cer"
+```
+
+Per-build signing step, after step 4 (moving the exe to `dist-releases`):
+
+```powershell
+signtool sign /f gff-codesign.pfx /p <password> /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "nativephp/electron/dist-releases/<name>-setup.exe"
+```
+
+`signtool` ships with the Windows SDK — if missing, install "Windows SDK Signing Tools" component via Visual Studio Installer.
+
+One-time per staff PC, so the self-signed cert is trusted and SmartScreen stays quiet:
+
+```powershell
+certutil -addstore -f "Root" gff-codesign.cer
+certutil -addstore -f "TrustedPublisher" gff-codesign.cer
+```
+
+Push via GPO/Intune if managing PCs centrally, or run manually once per machine. Without this trust import, a self-signed exe still trigger SmartScreen (worse — "Unknown Publisher" stays, cert alone doesn't fix it).
