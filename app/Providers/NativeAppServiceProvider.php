@@ -13,8 +13,13 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
+        $isAdminBuild = config('nativephp.build_target') === 'admin';
+
         Window::open('main')
-            ->title('Inventory stock manage system(Goodfriends Food)')
+            ->title($isAdminBuild
+                ? 'Inventory stock manage system - Admin (Goodfriends Food)'
+                : 'Inventory stock manage system - Packers (Goodfriends Food)')
+            ->url($isAdminBuild ? url('/admin/dashboard') : url('/'))
             ->width(1280)
             ->height(800)
             ->minWidth(1024)

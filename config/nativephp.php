@@ -16,6 +16,15 @@ return [
     'app_id' => env('NATIVEPHP_APP_ID', 'com.nativephp.app'),
 
     /**
+     * Which desktop build this is: "packer" or "admin". Controls the
+     * initial window/route in App\Providers\NativeAppServiceProvider.
+     * Read via config() rather than env() because the packaged app
+     * runs config:cache on first boot, after which raw env() calls
+     * stop reading .env and return null.
+     */
+    'build_target' => env('NATIVEPHP_BUILD_TARGET', 'packer'),
+
+    /**
      * If your application allows deep linking, you can specify the scheme
      * to use here. This is the scheme that will be used to open your
      * application from within other applications.

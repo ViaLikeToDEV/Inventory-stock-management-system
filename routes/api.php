@@ -15,8 +15,7 @@ Route::post('/sync-products', [ProductSyncController::class, 'sync'])->name('syn
 
 Route::prefix('shopee-api')->group(function () {
     Route::controller(IndexedShopee::class)->group(function () {
-        Route::get('/shopeeq', 'queryShopeeData')->name('shopee-query');
-        Route::post('/shopeeq', 'queryShopeeData')->name('shopee-query');
+        Route::match(['get', 'post'], '/shopeeq', 'queryShopeeData')->name('shopee-query');
         Route::post('/set-packed', 'setpacked')->name('shopee-setpacked');
         Route::get('/shopee_date_query', 'queryByDate')->name('shopee-date-query');
         Route::post('/shopee_req_query', 'getRequiredProducts')->name('shopee-required-query');
